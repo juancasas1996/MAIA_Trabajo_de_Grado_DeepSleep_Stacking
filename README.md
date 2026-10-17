@@ -8,13 +8,15 @@ Clasificación automática de los estadios del sueño (W, N1, N2, N3, REM) en é
 |---|---|---|---|
 | Fpz-Cz, Pz-Oz o los dos | con o sin | con o sin | 3 × 2 × 2 = **12** |
 
+> **Rama experimental.** El paso 2 reemplaza la BiLSTM sobre 20 épocas (10 min) de la versión original por 2 capas de Transformer sobre 80 épocas (40 min). Sus predicciones van a `paso_3_meta_model/entradas/paso_2_transformer/`, y el paso 3 las lee con `PASO_2 = "paso_2_transformer"`. Los resultados de abajo son los de la versión original.
+
 El sistema tiene tres piezas, y cada una es un solo modelo para las 12 combinaciones:
 
 ```
                     noche completa (los canales que traiga)
              ┌───────────────────┴────────────────────┐
-  Paso 1: 911 rasgos por época             Paso 2: señal cruda, 20 épocas a la vez
-  + XGBoost con canales en NaN             CNN → Transformer → BiLSTM
+  Paso 1: 911 rasgos por época             Paso 2: señal cruda, 80 épocas a la vez
+  + XGBoost con canales en NaN             CNN → Transformer → Transformer entre épocas
              └───────────────┬────────────────────────┘
           probabilidades por época de cada uno (t−2 … t+2) + qué canales hay
                              │
