@@ -1,0 +1,16 @@
+# Versiones con las que se obtuvieron los resultados (Python 3.11)
+numpy==2.3.5
+pandas==2.3.2
+scipy==1.17.1
+scikit-learn==1.7.1
+xgboost==3.0.5
+mne==1.12.1
+antropy==0.2.2
+PyWavelets==1.8.0
+torch==2.5.1
+linear-attention-transformer==0.19.1   # encoder de BIOT
+pyarrow==22.0.0
+xlrd==2.0.2                            # leer SC-subjects.xls
+joblib==1.5.1
+matplotlib==3.10.5
+jupyter

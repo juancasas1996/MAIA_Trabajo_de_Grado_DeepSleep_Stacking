@@ -1,0 +1,7 @@
+data/*
+!data/.gitkeep
+paso_3_meta_model/entradas/*
+!paso_3_meta_model/entradas/.gitkeep
+__pycache__/
+.ipynb_checkpoints/
+.DS_Store
