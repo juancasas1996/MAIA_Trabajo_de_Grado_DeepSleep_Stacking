@@ -32,8 +32,9 @@ El sistema tiene tres piezas, y cada una es un solo modelo para las 12 combinaci
 ├── data/                    los datos (no se suben al repositorio)
 ├── paso_1_xgboost/          paso_1_xgboost.ipynb
 ├── paso_2_deep_model/       paso_2_deep_model.ipynb
-└── paso_3_meta_model/       paso_3_meta_model.ipynb
-    └── entradas/            lo que dejan los pasos 1 y 2 para el paso 3
+├── paso_3_meta_model/       paso_3_meta_model.ipynb
+│   └── entradas/            lo que dejan los pasos 1 y 2 para el paso 3
+└── modelos/                 los tres modelos finales ya entrenados (ver modelos/README.md)
 ```
 
 Cada notebook tiene todo su código, explicado sección por sección, y termina con sus matrices de confusión.
