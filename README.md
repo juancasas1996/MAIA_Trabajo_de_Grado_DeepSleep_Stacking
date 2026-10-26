@@ -8,13 +8,15 @@ Clasificación automática de los estadios del sueño (W, N1, N2, N3, REM) en é
 |---|---|---|---|
 | Fpz-Cz, Pz-Oz o los dos | con o sin | con o sin | 3 × 2 × 2 = **12** |
 
+> **Rama experimental.** El paso 2 reemplaza la BiLSTM sobre 20 épocas (10 min) de la versión original por 2 capas de Transformer sobre 80 épocas (40 min). Sus predicciones van a `paso_3_meta_model/entradas/paso_2_transformer/`, y el paso 3 las lee con `PASO_2 = "paso_2_transformer"`. En **Resultados** están las dos versiones.
+
 El sistema tiene tres piezas, y cada una es un solo modelo para las 12 combinaciones:
 
 ```
                     noche completa (los canales que traiga)
              ┌───────────────────┴────────────────────┐
-  Paso 1: 911 rasgos por época             Paso 2: señal cruda, 20 épocas a la vez
-  + XGBoost con canales en NaN             CNN → Transformer → BiLSTM
+  Paso 1: 911 rasgos por época             Paso 2: señal cruda, 80 épocas a la vez
+  + XGBoost con canales en NaN             CNN → Transformer → Transformer entre épocas
              └───────────────┬────────────────────────┘
           probabilidades por época de cada uno (t−2 … t+2) + qué canales hay
                              │
@@ -30,8 +32,9 @@ El sistema tiene tres piezas, y cada una es un solo modelo para las 12 combinaci
 ├── data/                    los datos (no se suben al repositorio)
 ├── paso_1_xgboost/          paso_1_xgboost.ipynb
 ├── paso_2_deep_model/       paso_2_deep_model.ipynb
-└── paso_3_meta_model/       paso_3_meta_model.ipynb
-    └── entradas/            lo que dejan los pasos 1 y 2 para el paso 3
+├── paso_3_meta_model/       paso_3_meta_model.ipynb
+│   └── entradas/            lo que dejan los pasos 1 y 2 para el paso 3
+└── modelos/                 los tres modelos finales ya entrenados (ver modelos/README.md)
 ```
 
 Cada notebook tiene todo su código, explicado sección por sección, y termina con sus matrices de confusión.
@@ -72,17 +75,44 @@ pip install -r requirements.txt
 
 ## Resultados
 
-Test de 16 personas que no se usaron para ninguna decisión. Entre corchetes, el IC 95 % por bootstrap agrupado por persona.
+Dos versiones del paso 2, con los mismos pasos 1 y 3:
+- **BiLSTM 20:** la versión original, con una BiLSTM sobre 20 épocas;
+- **Transformer 80:** esta rama, con 2 capas de Transformer sobre 80 épocas.
 
-| Canales | MF1 | κ |
-|---|---|---|
-| Solo Fpz-Cz | 0.769 [0.733, 0.800] | 0.747 |
-| Solo Pz-Oz | 0.732 [0.680, 0.770] | 0.699 |
-| Fpz-Cz + EOG | 0.780 [0.745, 0.810] | 0.755 |
-| Los 4 canales | 0.780 [0.750, 0.807] | 0.756 |
-| **Combinación al azar por noche** | **0.764 [0.725, 0.797]** | 0.737 |
+### Validación cruzada (62 personas, 5 folds)
 
-Con un umbral de confianza de 0.65, el sistema entrega ~81 % de la noche con ~88 % de acierto. El ~19 % restante lo marca para revisión, con dos opciones; la correcta está entre ellas el ~85 % de las veces.
+Con esto se decide entre las versiones. MF1 fuera de fold:
+
+| Canales | Paso 2 solo · BiLSTM 20 | Paso 2 solo · Transformer 80 | Sistema · BiLSTM 20 | Sistema · Transformer 80 |
+|---|---|---|---|---|
+| Solo Fpz-Cz | 0.754 | 0.766 | 0.800 | 0.802 |
+| Solo Pz-Oz | 0.721 | 0.737 | 0.756 | 0.763 |
+| Fpz-Cz + EOG | 0.780 | 0.780 | 0.811 | 0.811 |
+| Los 4 canales | 0.784 | 0.789 | 0.817 | 0.819 |
+
+En las 12 combinaciones, el Transformer 80 mejora:
+- la red sola en 10 y empata en 2 (+0.009 en promedio);
+- el sistema completo en 10 (+0.003 en promedio).
+
+La mejora es mayor en las combinaciones sin EOG.
+
+### Test (16 personas)
+
+Estas personas no se usaron para ninguna decisión. Entre corchetes, el IC 95 % por bootstrap agrupado por persona.
+
+| Canales | MF1 · BiLSTM 20 | κ · BiLSTM 20 | MF1 · Transformer 80 | κ · Transformer 80 |
+|---|---|---|---|---|
+| Solo Fpz-Cz | 0.769 [0.733, 0.800] | 0.747 | 0.773 [0.738, 0.802] | 0.751 |
+| Solo Pz-Oz | 0.732 [0.680, 0.770] | 0.699 | 0.739 [0.686, 0.774] | 0.706 |
+| Fpz-Cz + EOG | 0.780 [0.745, 0.810] | 0.755 | 0.782 [0.749, 0.811] | 0.755 |
+| Los 4 canales | 0.780 [0.750, 0.807] | 0.756 | 0.784 [0.754, 0.811] | 0.757 |
+| **Combinación al azar por noche** | **0.764 [0.725, 0.797]** | 0.737 | **0.769 [0.731, 0.800]** | 0.741 |
+
+Las diferencias en el test (+0.002 a +0.007) quedan dentro de los IC.
+
+Con un umbral de confianza de 0.65 (el mismo en las dos versiones, elegido con la CV), el sistema entrega ~81 % de la noche con ~88 % de acierto. El ~19 % restante lo marca para revisión, con dos opciones, y la correcta está entre ellas:
+- con la BiLSTM 20, el 85 % de las veces;
+- con el Transformer 80, el 86 % de las veces.
 
 **Reproducibilidad:** con semilla 42, los pasos 1 y 3 son deterministas, y el paso 2 entrenado en una A100 dio los mismos resultados que en el proyecto. La única diferencia posible está en los embeddings de BIOT: en el proyecto se calcularon en la GPU de un Mac, y en CPU difieren en ~10⁻⁷. Eso puede mover alguna cifra en la tercera decimal.
 

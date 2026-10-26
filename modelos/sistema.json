@@ -1,0 +1,9 @@
+{
+  "estadios": ["W", "N1", "N2", "N3", "REM"],
+  "modalidades": ["fpz", "pz", "eog", "emg"],
+  "meta_modelo": "promedio de las probabilidades de meta_lr y meta_xgb",
+  "contexto_meta": [-2, -1, 0, 1, 2],
+  "relleno_bordes": "log(1/5) en las épocas que no existen antes del inicio o después del final de la noche",
+  "umbral_confianza": 0.65,
+  "aviso_noche_fraccion_revisar": 0.2732
+}
