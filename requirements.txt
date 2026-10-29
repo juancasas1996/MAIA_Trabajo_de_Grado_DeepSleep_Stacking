@@ -8,7 +8,6 @@ mne==1.12.1
 antropy==0.2.2
 PyWavelets==1.8.0
 torch==2.5.1
-linear-attention-transformer==0.19.1   # encoder de BIOT
 pyarrow==22.0.0
 xlrd==2.0.2                            # leer SC-subjects.xls
 joblib==1.5.1
