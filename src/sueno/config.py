@@ -31,7 +31,7 @@ MODALIDADES = ("fpz", "pz", "eog", "emg")
 ESTADIOS = ["W", "N1", "N2", "N3", "REM"]
 K = len(ESTADIOS)
 STAGE_MAP = {"Sleep stage W": 0, "Sleep stage 1": 1, "Sleep stage 2": 2,
-             "Sleep stage 3": 3, "Sleep stage 4": 3, "Sleep stage R": 4}
+             "Sleep stage 3": 3, "Sleep stage 4": 4, "Sleep stage R": 4}
 UNKNOWN = -1
 
 # Las 12 combinaciones de canales con al menos un EEG (las mismas de particiones.json, en el mismo orden)
