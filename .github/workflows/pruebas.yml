@@ -1,0 +1,49 @@
+# Pruebas unitarias y del modelo en modelos/. Corren en cada PR a main y en cada push a main.
+# Si alguna falla, el PR queda en rojo y no se puede hacer merge (regla de protección de la rama main).
+name: Pruebas
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pruebas-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pruebas:
+    name: Pruebas unitarias y del modelo
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Instalar el paquete
+        timeout-minutes: 10   # si pip se queda colgado, falla y se vuelve a correr
+        run: |
+          # torch para CPU: el de CUDA pesa ~2 GB y aquí no hay GPU
+          pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[dev]"
+
+      - name: Correr las pruebas
+        run: pytest -v --color=yes -o junit_family=xunit1 --junitxml=pruebas.xml
+
+      - name: Resumen de las pruebas
+        if: always()
+        run: python .github/resumen_pruebas.py pruebas.xml >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Guardar el reporte
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: reporte-pruebas
+          path: pruebas.xml
