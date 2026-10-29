@@ -5,3 +5,5 @@ paso_3_meta_model/entradas/*
 __pycache__/
 .ipynb_checkpoints/
 .DS_Store
+resultados/
+*.egg-info/

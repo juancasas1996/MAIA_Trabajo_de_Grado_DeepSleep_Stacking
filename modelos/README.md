@@ -1,28 +1,24 @@
 # Modelos entrenados
 
-Los tres modelos finales del sistema, entrenados con las 62 personas de desarrollo. Son los del informe de avance.
+Los tres modelos del sistema en producción, entrenados con las 62 personas de desarrollo. Son los del informe de avance. Se generan con `python scripts/entrenamiento_completo.py`, que los escribe en esta carpeta.
 
 | Carpeta | Archivo | Qué es |
 |---|---|---|
 | `modelo_a_xgboost/` | `xgb.json` | XGBoost enmascarado, 612 rondas (3 060 árboles) |
 | | `columnas.json` | las 719 columnas de entrada, en orden |
-| `modelo_b/` | `modelo_final.pt` | red CNN + Transformer (660 069 parámetros): pesos e hiperparámetros, guardado por el paso 2 |
+| `modelo_b/` | `modelo_final.pt` | red CNN + Transformer (660 069 parámetros): pesos e hiperparámetros |
 | `meta_modelo/` | `meta_lr.joblib` | regresión logística (con su estandarización) |
-| | `meta_xgb.json` | XGBoost de profundidad 4, 338 rondas |
+| | `meta_xgb.json` | XGBoost de profundidad 4: se entrenaron 338 rondas y se usan las 288 primeras (la mejor ronda, guardada como `best_iteration`) |
 | | `columnas.json` | las 54 entradas, en orden |
 | `sistema.json` | | umbral de confianza (0.65), aviso por noche y cómo se combinan las piezas |
 
-**Versión sin BIOT.** El modelo A y el meta-modelo son la versión sin los embeddings de BIOT (719 columnas en lugar de 911), que es la que se reporta. El paso 1 de este repositorio todavía calcula BIOT, así que al correrlo se obtiene la versión de 911 columnas, que no coincide con estos archivos.
-
-Para cargarlos:
+Para predecir una noche con las tres piezas juntas:
 
 ```python
-import json, joblib, torch, xgboost as xgb
+from sueno.sistema import analizar, cargar_sistema
 
-modelo_a = xgb.Booster(); modelo_a.load_model("modelos/modelo_a_xgboost/xgb.json")
-ck = torch.load("modelos/modelo_b/modelo_final.pt", map_location="cpu", weights_only=False)
-meta_lr = joblib.load("modelos/meta_modelo/meta_lr.joblib")
-meta_xgb = xgb.Booster(); meta_xgb.load_model("modelos/meta_modelo/meta_xgb.json")
+sistema = cargar_sistema("modelos")
+salida = analizar(sistema, {"psg": "SC4001E0-PSG.edf", "canales": ["fpz", "eog"]})
 ```
 
-La red del modelo B se reconstruye con las clases del paso 2: `ModeloB(**ck["ARQUITECTURA"])` y `load_state_dict(ck["model_state_dict"])`.
+Si se cargan a mano: el meta-XGBoost se limita a la mejor ronda, `meta_xgb.predict(dmatrix, iteration_range=(0, int(meta_xgb.attr("best_iteration")) + 1))`; con todas las rondas da otras probabilidades. La red del modelo B se reconstruye con `sueno.modelo_b.cargar("modelos/modelo_b/modelo_final.pt")`.
