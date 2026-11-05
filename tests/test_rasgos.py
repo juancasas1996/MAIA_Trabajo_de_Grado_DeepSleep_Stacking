@@ -1,10 +1,11 @@
 """Rasgos del modelo A y enmascaramiento de canales."""
 import numpy as np
 import pandas as pd
+import pytest
 from conftest import noche_falsa
 
 from sueno.config import FS, SPE
-from sueno.rasgos import add_context, apply_mask, channel_index, eeg_features, rasgos_noche
+from sueno.rasgos import add_context, apply_mask, channel_index, eeg_features, rasgo_base, rasgos_noche
 
 
 def test_alfa_domina_con_un_seno_de_10_hz():
@@ -29,6 +30,25 @@ def test_canal_ausente_no_genera_columnas():
     assert not [c for c in cols if c.startswith(("fpz_", "emg_"))]
     assert not [c for c in cols if "corr_fpz" in c]
     assert [c for c in cols if c.startswith("pz_")] and [c for c in cols if c.startswith("eog_")]
+
+
+@pytest.mark.parametrize("canales", [("fpz", "pz", "eog", "emg"), ("pz", "eog")])
+def test_calcular_solo_algunas_columnas_da_lo_mismo(canales):
+    """Con una lista de columnas se calculan solo esas, con los mismos valores que en la tabla completa."""
+    noche = noche_falsa(canales)
+    completa = rasgos_noche(noche)
+    pedidas = ["time_hours_since_lights_off", "fpz_higuchi_z", "pz_perm_entropy", "pz_sub_sigma_max_z_roll15",
+               "pz_dwt_cD1_petrosian_z", "eog_dwt_cD1_teager", "eog_abs_slow_z_lagm2", "emg_log_mean_z_roll5"]
+    parcial = rasgos_noche(noche, pedidas)
+    assert list(parcial.columns) == [c for c in pedidas if c in completa.columns]   # sin las de canales ausentes
+    pd.testing.assert_frame_equal(parcial, completa[parcial.columns])
+
+
+def test_rasgo_base():
+    assert rasgo_base("fpz_abs_beta_z_roll15") == "fpz_abs_beta"
+    assert rasgo_base("eog_abs_slow_z_lagm2") == "eog_abs_slow"
+    assert rasgo_base("pz_zcr_z") == "pz_zcr"
+    assert rasgo_base("pz_zcr") == "pz_zcr"
 
 
 def test_contexto_dentro_de_la_noche():

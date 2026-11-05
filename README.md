@@ -13,7 +13,7 @@ El sistema tiene tres piezas, y cada una es un solo modelo para las 12 combinaci
 ```
                     noche completa (los canales que traiga)
              ┌───────────────────┴────────────────────┐
-  Modelo A: 719 rasgos por época           Modelo B: señal cruda, 80 épocas a la vez
+  Modelo A: 100 rasgos por época           Modelo B: señal cruda, 80 épocas a la vez
   + XGBoost con canales en NaN             CNN → Transformer → Transformer entre épocas
              └───────────────┬────────────────────────┘
           probabilidades por época de cada uno (t−2 … t+2) + qué canales hay
@@ -71,6 +71,7 @@ Los cálculos intermedios van en `data/procesados/`. Con las variables de entorn
 python scripts/entrenamiento_completo.py                  # todo
 python scripts/entrenamiento_completo.py --pasos a meta   # solo algunos pasos
 python scripts/entrenamiento_completo.py --prueba         # 18 noches, 50 rondas y 2 pasadas: ver que todo corre (~25 min en CPU)
+python scripts/entrenamiento_completo.py --pasos a meta evaluar --columnas 100   # modelo A con sus 100 columnas más importantes
 ```
 
 | Paso | Qué hace | Dónde | Tiempo aprox. |
@@ -84,6 +85,8 @@ python scripts/entrenamiento_completo.py --prueba         # 18 noches, 50 rondas
 
 Cada paso guarda lo que calcula y, si se corta, al volver a correr retoma donde iba. Al final deja los modelos en `modelos/` y las métricas en `resultados/`. Con semilla 42, los pasos `a` y `meta` son deterministas: el código reproduce byte a byte los archivos de `modelos/`.
 
+**Modelo A con menos columnas:** `--columnas N` entrena el modelo A solo con las N columnas que más ganancia total tienen en el modelo A que está en `modelos/`. El modelo B no cambia; el meta-modelo se vuelve a entrenar porque sus entradas son las probabilidades de A. Elegir de nuevo sobre un modelo ya recortado da las mismas columnas, así que el comando reproduce el modelo.
+
 **Modelo B en Colab:** se sube el repositorio y los datos a Drive, se instala con `pip install -e .` y se corre `python scripts/entrenamiento_completo.py --pasos noches b --en-paralelo 6` en una A100. Los 6 entrenamientos corren a la vez en la misma GPU.
 
 ## Pruebas
@@ -96,17 +99,41 @@ Revisan la lectura de las noches, los rasgos, el preprocesamiento y la red del m
 
 ## Resultados
 
-Del informe de avance. **CV:** predicciones fuera de fold de los 62 sujetos de desarrollo. **Test:** 16 sujetos que no se usaron para ninguna decisión; entre corchetes, el IC 95 % por bootstrap agrupado por persona (2 000 remuestras).
+**CV:** predicciones fuera de fold de los 62 sujetos de desarrollo. **Test:** 16 sujetos que no se usaron para ninguna decisión; entre corchetes, el IC 95 % por bootstrap agrupado por persona (2 000 remuestras).
 
-| Canales | CV MF1 | Test MF1 [IC 95 %] | Test κ |
+### Versiones del modelo
+
+| Versión | Modelo A | Meta-modelo | Test MF1, canales al azar | Estado |
+|---|---|---|---|---|
+| v1 (informe de avance) | 719 columnas, 612 rondas | 288 rondas | 0.768 [0.730, 0.799] | la del informe |
+| **v2** | **100 columnas**, 542 rondas | 242 rondas | 0.767 [0.727, 0.797] | **la que está en `modelos/`** |
+
+El modelo B es el mismo en las dos. La v2 usa las 100 columnas con más ganancia total en el modelo A de la v1 (que se entrenó solo con los sujetos de desarrollo). Esas 100 columnas explican el 70 % de la ganancia total: 51 de Fpz-Cz, 40 de Pz-Oz, 5 del EOG, 3 del EMG y la hora de la noche.
+
+Al predecir, solo se calculan los 62 rasgos base que necesitan esas 100 columnas (de 213), con los mismos valores que la tabla completa. El cálculo de los rasgos baja de ~1.2 s a ~0.75 s por noche en un Mac M3, pero el tiempo total casi no cambia: lo que más tarda es la red B (~2.5 s por noche con un canal y ~7 s con los 4, de un total de ~3 s y ~8.5 s).
+
+**v2 frente a v1 en el test**, diferencia pareada (mismos sujetos y mismas combinaciones sorteadas):
+
+| | ΔMF1 [IC 95 %] | Δκ [IC 95 %] | ΔF1 N1 [IC 95 %] |
 |---|---|---|---|
-| Solo Fpz-Cz | 0.802 | 0.772 [0.736, 0.802] | 0.750 |
-| Solo Pz-Oz | 0.762 | 0.737 [0.686, 0.773] | 0.704 |
-| Fpz-Cz + EOG | 0.811 | 0.782 [0.749, 0.811] | 0.755 |
-| Los 4 canales | 0.819 | 0.784 [0.753, 0.811] | 0.757 |
-| **Combinación al azar por noche** | | **0.768 [0.730, 0.799]** | 0.740 |
+| Sistema, canales al azar | −0.001 [−0.005, +0.002] | −0.002 [−0.006, +0.002] | −0.005 [−0.011, +0.001] |
+| Solo el modelo A | **−0.012** [−0.019, −0.005] | **−0.014** [−0.023, −0.007] | **−0.021** [−0.038, −0.005] |
 
-Con un umbral de confianza de 0.65 (elegido con la CV), el sistema entrega el 80.5 % de la noche con 87.8 % de acierto y marca el resto para revisión con dos opciones; la correcta está entre ellas el 86.1 % de las veces.
+El modelo A solo pierde algo de forma significativa, pero el meta-modelo lo compensa con la red B: el sistema queda empatado (los IC cruzan 0).
+
+### Por combinación de canales
+
+| Canales | CV MF1 v1 | CV MF1 v2 | Test MF1 v1 [IC 95 %] | Test MF1 v2 [IC 95 %] | Test κ v2 |
+|---|---|---|---|---|---|
+| Solo Fpz-Cz | 0.802 | 0.799 | 0.772 [0.736, 0.802] | 0.772 [0.737, 0.801] | 0.748 |
+| Solo Pz-Oz | 0.762 | 0.760 | 0.737 [0.686, 0.773] | 0.735 [0.681, 0.772] | 0.703 |
+| Fpz-Cz + EOG | 0.811 | 0.808 | 0.782 [0.749, 0.811] | 0.779 [0.746, 0.807] | 0.751 |
+| Los 4 canales | 0.819 | 0.818 | 0.784 [0.753, 0.811] | 0.782 [0.752, 0.809] | 0.755 |
+| **Combinación al azar por noche** | | | **0.768 [0.730, 0.799]** | **0.767 [0.727, 0.797]** | 0.738 |
+
+Con un umbral de confianza de 0.65 (elegido con la CV), el sistema v2 entrega el 80.2 % de la noche con 87.8 % de acierto (v1: 80.5 % y 87.8 %) y marca el resto para revisión con dos opciones; la correcta está entre ellas el 86.1 % de las veces (v1: 86.1 %).
+
+**Cautela:** las 100 columnas se eligieron con un modelo entrenado con los mismos sujetos de la CV, así que la CV de la v2 puede salir un poco optimista. El test no tiene ese problema.
 
 ## Créditos
 

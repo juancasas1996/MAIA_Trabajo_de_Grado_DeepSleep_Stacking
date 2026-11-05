@@ -11,6 +11,7 @@ import xgboost as xgb
 from conftest import noche_falsa
 
 from sueno.config import MODELOS
+from sueno.modelo_a import mas_importantes
 from sueno.rasgos import rasgos_noche
 from sueno.sistema import cargar_sistema
 
@@ -24,12 +25,23 @@ def test_estan_todas_las_piezas(archivo):
 
 
 def test_modelo_a_coincide_con_los_rasgos():
-    """El XGBoost espera exactamente las columnas que calcula rasgos_noche con los 4 canales, en ese orden."""
+    """El XGBoost usa columnas que calcula rasgos_noche con los 4 canales (todas o una parte), en el mismo orden."""
     cols = json.loads((MODELOS / "modelo_a_xgboost/columnas.json").read_text())
     b = xgb.Booster()
     b.load_model(MODELOS / "modelo_a_xgboost/xgb.json")
     assert b.num_features() == len(cols)
-    assert list(rasgos_noche(noche_falsa()).columns) == cols
+    todas = list(rasgos_noche(noche_falsa()).columns)
+    assert [c for c in todas if c in set(cols)] == cols
+
+
+def test_elegir_las_columnas_mas_importantes():
+    """Elegir n columnas da n, en el orden del modelo; elegir de nuevo sobre esas mismas no cambia nada."""
+    cols = json.loads((MODELOS / "modelo_a_xgboost/columnas.json").read_text())
+    n = len(cols) // 2
+    elegidas = mas_importantes(MODELOS / "modelo_a_xgboost", n)
+    assert len(elegidas) == n
+    assert [c for c in cols if c in set(elegidas)] == elegidas
+    assert mas_importantes(MODELOS / "modelo_a_xgboost", len(cols) + 10) == cols
 
 
 def test_meta_modelo_54_entradas():

@@ -59,7 +59,8 @@ class ModeloA(_Inferencia, TransformerMixin):
 
     def transform(self, noche):
         self._cargar()
-        X = rasgos_noche(noche).reindex(columns=self.columnas_).to_numpy(np.float32)  # canales ausentes -> NaN
+        # solo los rasgos que usa el modelo; las columnas de canales ausentes quedan en NaN
+        X = rasgos_noche(noche, self.columnas_).reindex(columns=self.columnas_).to_numpy(np.float32)
         for m in MODALIDADES:
             if m not in noche.canales:
                 X[:, self.idx_[m]] = np.nan
