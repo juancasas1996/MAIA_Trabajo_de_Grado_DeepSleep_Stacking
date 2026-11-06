@@ -5,5 +5,5 @@
   "contexto_meta": [-2, -1, 0, 1, 2],
   "relleno_bordes": "log(1/5) en las épocas que no existen antes del inicio o después del final de la noche",
   "umbral_confianza": 0.65,
-  "aviso_noche_fraccion_revisar": 0.2732
+  "aviso_noche_fraccion_revisar": 0.2765
 }

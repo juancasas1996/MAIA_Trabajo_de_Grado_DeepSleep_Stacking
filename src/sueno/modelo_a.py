@@ -51,6 +51,22 @@ def columnas(df):
     return [c for c in df.columns if c not in META_COLS]
 
 
+def mas_importantes(directorio, n):
+    """Las n columnas con más ganancia total en un modelo A ya entrenado, en el orden de la tabla de rasgos.
+
+    La ganancia total es cuánto bajó la pérdida, sumado en todas las divisiones que usan la columna. Si el modelo
+    tiene n columnas o menos, las devuelve todas: elegir de nuevo sobre un modelo ya recortado da las mismas.
+    """
+    d = Path(directorio)
+    cols = json.loads((d / "columnas.json").read_text())
+    b = xgb.Booster()
+    b.load_model(d / "xgb.json")
+    g = b.get_score(importance_type="total_gain")
+    ganancia = pd.Series([g.get(f"f{i}", 0.0) for i in range(len(cols))], index=cols)
+    elegidas = set(ganancia.sort_values(ascending=False, kind="stable").index[:n])
+    return [c for c in cols if c in elegidas]
+
+
 def pesos(y, alpha=ALPHA):
     return compute_sample_weight("balanced", y) ** alpha
 

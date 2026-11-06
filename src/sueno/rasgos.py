@@ -2,7 +2,12 @@
 
 El prefijo de cada columna dice de qué canal sale (fpz_, pz_, eog_, emg_, time_). Si falta un canal, sus columnas
 quedan en NaN y XGBoost las trata como faltantes.
+
+Al predecir, rasgos_noche(noche, columnas) calcula solo lo que necesitan esas columnas (las del modelo A) y da los
+mismos valores que con la tabla completa.
 """
+import re
+
 import antropy as ant
 import numpy as np
 import pandas as pd
@@ -25,13 +30,24 @@ KEY_SUFFIXES = [
 CROSS = {"corr_fpz": "fpz"}  # rasgos con prefijo de un canal que también usan otro
 
 
+def rasgo_base(col):
+    """fpz_abs_beta_z_roll15 -> fpz_abs_beta: el rasgo de la época del que sale una columna."""
+    return re.fullmatch(r"(.+?)(?:_z(?:_roll\d+|_lag[pm]\d)?)?", col).group(1)
+
+
+def _quiere(pedir):
+    """pedir: rasgos base a calcular (None = todos)."""
+    return lambda nombre: pedir is None or nombre in pedir
+
+
 def _band_power(f, psd, lo, hi):
     idx = (f >= lo) & (f < hi)
     return psd[:, idx].sum(1) * (f[1] - f[0])
 
 
-def eeg_features(x, p):
-    """x: (n_épocas, 3000) en µV. p: prefijo del canal."""
+def eeg_features(x, p, pedir=None):
+    """x: (n_épocas, 3000) en µV. p: prefijo del canal. pedir: rasgos base a calcular (None = todos)."""
+    quiere = _quiere(pedir)
     out = {}
     f, psd = signal.welch(x, fs=FS, nperseg=4 * FS, noverlap=2 * FS, axis=-1)
     total = _band_power(f, psd, 0.5, 30) + EPS
@@ -56,16 +72,22 @@ def eeg_features(x, p):
     out[f"{p}_std"] = x.std(1)
     q75, q25 = np.percentile(x, [75, 25], axis=1)
     out[f"{p}_iqr"] = q75 - q25
-    out[f"{p}_skew"] = stats.skew(x, axis=1)
-    out[f"{p}_kurt"] = stats.kurtosis(x, axis=1)
+    if quiere(f"{p}_skew"):
+        out[f"{p}_skew"] = stats.skew(x, axis=1)
+    if quiere(f"{p}_kurt"):
+        out[f"{p}_kurt"] = stats.kurtosis(x, axis=1)
     mob, comp = ant.hjorth_params(x, axis=1)
     out[f"{p}_hjorth_mob"], out[f"{p}_hjorth_comp"] = mob, comp
     out[f"{p}_zcr"] = ant.num_zerocross(x, normalize=True, axis=1)
     out[f"{p}_line_length"] = np.abs(np.diff(x, axis=1)).mean(1)
-    out[f"{p}_perm_entropy"] = np.array([ant.perm_entropy(v, order=3, normalize=True) for v in x])
-    out[f"{p}_higuchi"] = np.array([ant.higuchi_fd(v.astype(np.float64)) for v in x])
+    if quiere(f"{p}_perm_entropy"):
+        out[f"{p}_perm_entropy"] = np.array([ant.perm_entropy(v, order=3, normalize=True) for v in x])
+    if quiere(f"{p}_higuchi"):
+        out[f"{p}_higuchi"] = np.array([ant.higuchi_fd(v.astype(np.float64)) for v in x])
 
     # 6 sub-ventanas de 5 s
+    if pedir is not None and not any(r.startswith(f"{p}_sub_") for r in pedir):
+        return out
     sub = x.reshape(len(x), 6, 5 * FS)
     fs_, psub = signal.welch(sub, fs=FS, nperseg=250, noverlap=125, axis=-1)
     for b, (lo, hi) in [("sigma", (12, 16)), ("delta", (0.5, 4))]:
@@ -102,20 +124,26 @@ def emg_features(v):
             "emg_min": v.min(1), "emg_max": v.max(1), "emg_log_mean": np.log10(np.abs(v.mean(1)) + EPS)}
 
 
-def dwt_features(x, p):
+def dwt_features(x, p, pedir=None):
     """Ondícula biortogonal 2.2 en 4 niveles: 8 medidas por cada una de las 5 sub-bandas."""
+    quiere = _quiere(pedir)
     out = {}
     coeffs = pywt.wavedec(x, "bior2.2", level=4, axis=-1)
     for band, c in zip(DWT_BANDS, coeffs):
         q = f"{p}_dwt_{band}"
-        out[f"{q}_logenergy"] = np.log10((c**2).mean(1) + EPS)
-        out[f"{q}_teager"] = np.log10(np.abs(c[:, 1:-1] ** 2 - c[:, :-2] * c[:, 2:]).mean(1) + EPS)
-        mob, comp = ant.hjorth_params(c, axis=1)
-        out[f"{q}_hjorth_mob"], out[f"{q}_hjorth_comp"] = mob, comp
-        out[f"{q}_kurt"] = stats.kurtosis(c, axis=1)
-        out[f"{q}_skew"] = stats.skew(c, axis=1)
-        out[f"{q}_katz"] = np.array([ant.katz_fd(v) for v in c])
-        out[f"{q}_petrosian"] = np.array([ant.petrosian_fd(v) for v in c])
+        medidas = {
+            "logenergy": lambda: np.log10((c**2).mean(1) + EPS),
+            "teager": lambda: np.log10(np.abs(c[:, 1:-1] ** 2 - c[:, :-2] * c[:, 2:]).mean(1) + EPS),
+            "hjorth_mob": lambda: ant.hjorth_params(c, axis=1)[0],
+            "hjorth_comp": lambda: ant.hjorth_params(c, axis=1)[1],
+            "kurt": lambda: stats.kurtosis(c, axis=1),
+            "skew": lambda: stats.skew(c, axis=1),
+            "katz": lambda: np.array([ant.katz_fd(v) for v in c]),
+            "petrosian": lambda: np.array([ant.petrosian_fd(v) for v in c]),
+        }
+        for nombre, calcular in medidas.items():
+            if quiere(f"{q}_{nombre}"):
+                out[f"{q}_{nombre}"] = calcular()
     return out
 
 
@@ -154,17 +182,24 @@ def add_context(df, rolls=(5, 15), lags=(-2, -1, 1, 2)):
     return pd.concat(parts, axis=1)
 
 
-def rasgos_noche(noche):
-    """Tabla (épocas analizadas × rasgos) de los canales presentes, con contexto."""
+def rasgos_noche(noche, columnas=None):
+    """Tabla (épocas analizadas × rasgos) de los canales presentes, con contexto.
+
+    columnas: si se dan, solo se calculan los rasgos base que necesitan y la tabla trae solo esas columnas (las de
+    canales ausentes no aparecen). Cada columna sale con el mismo valor que en la tabla completa: el z-score y el
+    contexto de una columna dependen solo de su rasgo base.
+    """
+    pedir = None if columnas is None else {rasgo_base(c) for c in columnas}
+    canal_pedido = lambda m: pedir is None or any(r.startswith(f"{m}_") for r in pedir)  # noqa: E731
     cut = lambda s: (s[: noche.n_registro * SPE] * 1e6).reshape(noche.n_registro, SPE)[noche.epocas]  # noqa: E731
     ep = {m: cut(noche.senales[m]) for m in noche.canales if m != "emg"}
     feats = {}
     for m in ("fpz", "pz"):
-        if m in ep:
-            feats.update(eeg_features(ep[m], m))
-    if "eog" in ep:
+        if m in ep and canal_pedido(m):
+            feats.update(eeg_features(ep[m], m, pedir))
+    if "eog" in ep and canal_pedido("eog"):
         feats.update(eog_features(ep["eog"], ep.get("fpz")))
-    if "emg" in noche.canales:
+    if "emg" in noche.canales and canal_pedido("emg"):
         # MNE interpola el EMG (1 Hz) a 100 Hz: cada 100 muestras está el valor original
         emg = (noche.senales["emg"] * 1e6)[: noche.n_registro * SPE: FS].reshape(noche.n_registro, EPOCH)[noche.epocas]
         feats.update(emg_features(emg))
@@ -173,13 +208,16 @@ def rasgos_noche(noche):
 
     dwt = {}
     for m in ("fpz", "pz", "eog"):
-        if m in ep:
-            dwt.update(dwt_features(ep[m], m))
+        if m in ep and (pedir is None or any(r.startswith(f"{m}_dwt_") for r in pedir)):
+            dwt.update(dwt_features(ep[m], m, pedir))
     for m in ("fpz", "pz"):
-        if m in ep:
+        if m in ep and (pedir is None or any(r.startswith(f"{m}_ap_") for r in pedir)):
             dwt.update(aperiodic_features(ep[m], m))
-    df = pd.concat([df, pd.DataFrame(dwt).astype(np.float32)], axis=1)
-    return add_context(df)
+    df = pd.concat([df, pd.DataFrame(dwt, index=df.index).astype(np.float32)], axis=1)
+    if pedir is None:
+        return add_context(df)
+    df = add_context(df[[c for c in df.columns if c in pedir]])
+    return df[[c for c in columnas if c in df.columns]]
 
 
 def channel_index(cols):

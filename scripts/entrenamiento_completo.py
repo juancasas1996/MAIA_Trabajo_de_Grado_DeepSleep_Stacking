@@ -3,6 +3,8 @@
     python scripts/entrenamiento_completo.py                      todos los pasos
     python scripts/entrenamiento_completo.py --pasos a meta       solo algunos
     python scripts/entrenamiento_completo.py --prueba             pocas noches y pocas rondas, para ver que todo corre
+    python scripts/entrenamiento_completo.py --pasos a meta evaluar --columnas 100
+                                                                  modelo A con sus 100 columnas más importantes
 
 Pasos, en orden:
   rasgos   rasgos por época de las 153 noches (modelo A)                     CPU, ~10 min con 8 procesos
@@ -14,6 +16,10 @@ Pasos, en orden:
            matrices de confusión y modelos/sistema.json                      CPU, ~2 min
 
 Cada paso guarda lo que calcula en data/procesados/ y, si se corta, al volver a correr retoma donde iba.
+
+--columnas N: el modelo A usa solo las N columnas con más ganancia total en el modelo A que está en modelos/ (ver
+modelo_a.mas_importantes). La lista se guarda en data/procesados/modelo_a/columnas_N.json, y los folds y el
+meta-modelo de esa variante van en carpetas aparte (folds_N_columnas/, meta_N_columnas/). El modelo B no cambia.
 Necesita en data/ los EDF de Sleep Cassette (sleep-cassette/) y SC-subjects.xls. Partición: particiones.json.
 """
 import argparse
@@ -70,8 +76,10 @@ def cargar_preds(path):
 
 
 class Proyecto:
-    def __init__(self, prueba=False, n_procesos=8, en_paralelo=1, salida=None):
+    def __init__(self, prueba=False, n_procesos=8, en_paralelo=1, salida=None, columnas=None):
         self.prueba = prueba
+        self.n_columnas = columnas
+        self.variante = f"_{columnas}_columnas" if columnas else ""
         self.n_procesos = n_procesos
         self.en_paralelo = en_paralelo
         self.particion = C.particion()
@@ -132,10 +140,22 @@ class Proyecto:
 
     # --- modelo A ------------------------------------------------------------------------------------------------
 
+    def columnas_a(self, df):
+        todas = modelo_a.columnas(df)
+        if not self.n_columnas:
+            return todas
+        ruta = self.dir / "modelo_a" / f"columnas_{self.n_columnas}.json"
+        if not ruta.exists():
+            elegidas = modelo_a.mas_importantes(C.MODELOS / "modelo_a_xgboost", self.n_columnas)
+            assert set(elegidas) <= set(todas), "el modelo de modelos/ usa columnas que ya no calcula el código"
+            ruta.write_text(json.dumps(elegidas))
+            log(f"modelo A: las {len(elegidas)} columnas más importantes de {C.MODELOS / 'modelo_a_xgboost'} -> {ruta}")
+        return json.loads(ruta.read_text())
+
     def modelo_a(self):
         df = self.rasgos()
-        cols = modelo_a.columnas(df)
-        d = self.dir / "modelo_a" / "folds"
+        cols = self.columnas_a(df)
+        d = self.dir / "modelo_a" / f"folds{self.variante}"
         d.mkdir(parents=True, exist_ok=True)
         n_max = 50 if self.prueba else modelo_a.N_MAX
         rondas = []
@@ -161,7 +181,7 @@ class Proyecto:
 
     def preds_a(self):
         """combinación -> 'oof'/'test' -> noche -> (y, p)"""
-        d = self.dir / "modelo_a" / "folds"
+        d = self.dir / "modelo_a" / f"folds{self.variante}"
         out = {c: {"oof": {}, "test": {}} for c in C.COMBINACIONES}
         for f in self.folds():
             for c, p in cargar_preds(d / f"fold_{f['fold']}.npz").items():
@@ -233,7 +253,7 @@ class Proyecto:
     # --- meta-modelo ---------------------------------------------------------------------------------------------
 
     def meta(self):
-        ruta = self.dir / "meta" / "predicciones.npz"
+        ruta = self.dir / f"meta{self.variante}" / "predicciones.npz"
         if ruta.exists():
             return
         ruta.parent.mkdir(parents=True, exist_ok=True)
@@ -265,7 +285,7 @@ class Proyecto:
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        z = cargar_preds(self.dir / "meta" / "predicciones.npz")
+        z = cargar_preds(self.dir / f"meta{self.variante}" / "predicciones.npz")
         S = {c: {"oof": z[f"{c}__oof"], "test": z[f"{c}__test"]} for c in C.COMBINACIONES}
         A = self.preds_a()
         B = self.preds_b(A)
@@ -323,14 +343,16 @@ def main():
     ap.add_argument("--n-procesos", type=int, default=os.cpu_count(), help="procesos para rasgos y noches")
     ap.add_argument("--en-paralelo", type=int, default=1, help="entrenamientos del modelo B a la vez (GPU)")
     ap.add_argument("--salida", help="carpeta donde dejar modelos/ y resultados/ (por defecto, las del repositorio)")
+    ap.add_argument("--columnas", type=int, help="modelo A solo con sus N columnas más importantes (ver arriba)")
     ap.add_argument("--entrenamiento", choices=ENTRENAMIENTOS_B, help=argparse.SUPPRESS)  # uso interno
     a = ap.parse_args()
 
-    p = Proyecto(a.prueba, a.n_procesos, a.en_paralelo, a.salida)
+    p = Proyecto(a.prueba, a.n_procesos, a.en_paralelo, a.salida, a.columnas)
     if a.entrenamiento:
         p.entrenar_b(a.entrenamiento)
         return
-    log(f"{len(p.noches)} noches · pasos: {' '.join(a.pasos)}" + (" · PRUEBA" if a.prueba else ""))
+    log(f"{len(p.noches)} noches · pasos: {' '.join(a.pasos)}" + (" · PRUEBA" if a.prueba else "")
+        + (f" · modelo A con {a.columnas} columnas" if a.columnas else ""))
     acciones = {"rasgos": p.rasgos, "noches": p.preparar_noches, "a": p.modelo_a, "b": p.modelo_b,
                 "meta": p.meta, "evaluar": p.evaluar}
     for paso in PASOS:
