@@ -1,13 +1,8 @@
-# Pruebas unitarias y del modelo en modelos/. Corren en cada PR a main y en cada push a main.
-# Si alguna falla, el PR queda en rojo y no se puede hacer merge (regla de protección de la rama main).
-# El E2E y el despliegue también las llaman (workflow_call) y no siguen si fallan.
+# Pruebas unitarias y del modelo en modelos/. Las corren el E2E (en cada PR) y el despliegue (al hacer merge), que no
+# siguen si fallan. Solas se lanzan a mano: Actions → Pruebas → Run workflow.
 name: Pruebas
 
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
   workflow_dispatch:
   workflow_call:
 
