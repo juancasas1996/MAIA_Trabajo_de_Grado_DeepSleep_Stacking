@@ -1,5 +1,6 @@
 # Pruebas unitarias y del modelo en modelos/. Corren en cada PR a main y en cada push a main.
 # Si alguna falla, el PR queda en rojo y no se puede hacer merge (regla de protección de la rama main).
+# El E2E y el despliegue también las llaman (workflow_call) y no siguen si fallan.
 name: Pruebas
 
 on:
@@ -8,9 +9,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
 
 concurrency:
-  group: pruebas-${{ github.ref }}
+  # con el nombre del workflow que llama, para que el E2E y el despliegue no cancelen esta corrida ni al revés
+  group: pruebas-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
