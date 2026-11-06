@@ -1,0 +1,85 @@
+# Despliegue a producción: al llegar a main un merge que cambie modelos/, src/ o despliegue/.
+# El merge del PR es la aprobación humana: el modelo nunca se despliega sin él.
+#   1. pruebas unitarias y del modelo (si fallan, producción no se toca);
+#   2. registra en MLflow lo que quedó en main (versión nueva de "sistema-sueno");
+#   3. actualiza el endpoint "sistema-sueno" (si la actualización falla, SageMaker se queda con la versión anterior);
+#   4. prueba de humo con una noche de test;
+#   5. marca el commit con el tag modelo-v<versión de MLflow>.
+name: Despliegue
+
+on:
+  push:
+    branches: [main]
+    paths: ["modelos/**", "src/**", "despliegue/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: despliegue-produccion
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # para el tag de versión
+
+jobs:
+  pruebas:
+    uses: ./.github/workflows/pruebas.yml
+
+  desplegar:
+    name: Registrar y desplegar en producción
+    needs: pruebas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            despliegue/requirements-aws.txt
+
+      - name: Instalar
+        timeout-minutes: 10
+        run: |
+          pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install -e . -r despliegue/requirements-aws.txt
+
+      - name: Credenciales de AWS
+        env:
+          AWS_CREDENCIALES: ${{ secrets.AWS_CREDENCIALES }}
+        run: |
+          # el bloque [default] de AWS Academy (AWS Details → AWS CLI), tal cual, en ~/.aws/credentials
+          mkdir -p ~/.aws && printf '%s\n' "$AWS_CREDENCIALES" > ~/.aws/credentials
+          python -c "import boto3; print('cuenta de AWS: ****' + boto3.client('sts').get_caller_identity()['Account'][-4:])" \
+            || { echo "::error::Las credenciales de AWS no sirven o vencieron: pega de nuevo el bloque de AWS Details en el secret AWS_CREDENCIALES y vuelve a correr el workflow (Re-run jobs)."; exit 1; }
+
+      - name: Registrar en MLflow
+        id: registro
+        run: |
+          python despliegue/registrar.py --etiqueta estado=produccion | tee registro.log
+          echo "version=$(grep -oE 'versión [0-9]+' registro.log | grep -oE '[0-9]+')" >> "$GITHUB_OUTPUT"
+
+      - name: Desplegar en producción
+        run: python despliegue/desplegar.py produccion ${{ steps.registro.outputs.version }}
+
+      - name: Prueba de humo
+        run: python despliegue/humo.py | tee humo.log
+
+      - name: Tag de versión
+        run: |
+          git tag "modelo-v${{ steps.registro.outputs.version }}"
+          git push origin "modelo-v${{ steps.registro.outputs.version }}"
+
+      - name: Resumen
+        if: always()
+        run: |
+          {
+            echo "## Despliegue"
+            echo "- Versión de MLflow: ${{ steps.registro.outputs.version || 'no se registró' }}"
+            echo "- Commit: \`${GITHUB_SHA::7}\`"
+            [ -f humo.log ] && echo "- Prueba de humo: $(tail -1 humo.log)"
+          } >> "$GITHUB_STEP_SUMMARY"

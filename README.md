@@ -39,6 +39,8 @@ El sistema tiene tres piezas, y cada una es un solo modelo para las 12 combinaci
 │   └── entrenamiento_completo.py entrena todo y deja los modelos en modelos/
 ├── tests/                        pruebas unitarias y del modelo en modelos/
 ├── modelos/                      los tres modelos en producción (ver modelos/README.md)
+├── despliegue/                   endpoint de SageMaker, MLflow, E2E y despliegue (ver despliegue/README.md)
+├── .github/workflows/            CI/CD: pruebas, E2E en cada PR y despliegue al hacer merge a main
 ├── particiones.json              partición por sujeto: 16 de test + 5 folds sobre 62, y las 12 combinaciones
 ├── data/                         los datos (no se suben al repositorio)
 └── paso_1_xgboost/, paso_2_deep_model/, paso_3_meta_model/
@@ -96,6 +98,16 @@ pytest
 ```
 
 Revisan la lectura de las noches, los rasgos, el preprocesamiento y la red del modelo B, el meta-modelo, la confianza, la partición y que el modelo de `modelos/` esté completo, cargue y prediga.
+
+## CI/CD
+
+| Cuándo | Workflow | Qué hace |
+|---|---|---|
+| Cada PR a `main` y cada push a `main` | **Pruebas** | `pytest`, con una tabla de cada prueba en el resumen |
+| PR a `main` que cambia `modelos/`, `src/` o `despliegue/` | **E2E** | pruebas → despliega el candidato en un endpoint aparte → 32 noches de test al candidato y a producción → comenta en el PR MF1, κ, F1 por estadio, matriz de confusión y latencia → borra el candidato |
+| Merge a `main` que cambia esas carpetas | **Despliegue** | pruebas → registra la versión en MLflow → actualiza el endpoint de producción → prueba de humo → tag `modelo-v<versión>` |
+
+El modelo nunca llega a producción sin el merge de una persona. Detalles, secrets y uso local en [`despliegue/README.md`](despliegue/README.md).
 
 ## Resultados
 
