@@ -10,7 +10,7 @@ name: Despliegue
 on:
   push:
     branches: [main]
-    paths: ["modelos/**", "src/**", "despliegue/**"]
+    paths: ["modelos/**", "src/**", "despliegue/**", "!**/*.md"]
   workflow_dispatch:
 
 concurrency:

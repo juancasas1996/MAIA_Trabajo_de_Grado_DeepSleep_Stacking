@@ -13,7 +13,7 @@ name: E2E
 on:
   pull_request:
     branches: [main]
-    paths: ["modelos/**", "src/**", "despliegue/**", "tests/**", "pyproject.toml"]
+    paths: ["modelos/**", "src/**", "despliegue/**", "tests/**", "pyproject.toml", "!**/*.md"]
   workflow_dispatch:
 
 concurrency:
