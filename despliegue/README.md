@@ -7,7 +7,6 @@ El sistema se sirve en un **endpoint asíncrono de SageMaker** (`sistema-sueno`,
 ```
 rama con un modelo nuevo en modelos/  ──►  PR a main
                                             │
-        workflow "Pruebas"                  ├─ pytest (pruebas unitarias y del modelo)
         workflow "E2E"                      ├─ pytest ─► si falla, se para
                                             │   └─ registra el candidato en MLflow
                                             │      despliega un endpoint aparte (sistema-sueno-pr-N)
@@ -22,7 +21,7 @@ rama con un modelo nuevo en modelos/  ──►  PR a main
                                               ─► prueba de humo ─► tag modelo-v<versión>
 ```
 
-- El E2E corre solo si el PR cambia `modelos/`, `src/` o `despliegue/`.
+- El E2E corre solo si el PR cambia `modelos/`, `src/`, `despliegue/`, `tests/` o `pyproject.toml`. El workflow "Pruebas" (solo `pytest`) se lanza a mano desde Actions.
 - **El modelo nunca se despliega en producción sin el merge** de una persona. El E2E no toca producción; solo le manda las 32 noches para comparar.
 - Si algo falla (pruebas, E2E o despliegue), producción no cambia. Si la actualización del endpoint falla, SageMaker se queda con la versión anterior.
 - Para volver a una versión anterior: revertir el PR y hacer merge del revert, o `python despliegue/desplegar.py produccion <versión>`.

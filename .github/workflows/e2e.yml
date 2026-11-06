@@ -1,4 +1,4 @@
-# E2E de un modelo candidato: en cada PR a main que cambie modelos/, src/ o despliegue/.
+# E2E de un modelo candidato: en cada PR a main que cambie modelos/, src/, despliegue/, tests/ o pyproject.toml.
 #   1. pruebas unitarias y del modelo (si fallan, no sigue);
 #   2. despliega el candidato en un endpoint aparte de SageMaker (producción no se toca);
 #   3. manda las 32 noches de test al candidato y a producción y compara MF1, κ, F1 por estadio, matriz de confusión
@@ -13,7 +13,7 @@ name: E2E
 on:
   pull_request:
     branches: [main]
-    paths: ["modelos/**", "src/**", "despliegue/**"]
+    paths: ["modelos/**", "src/**", "despliegue/**", "tests/**", "pyproject.toml"]
   workflow_dispatch:
 
 concurrency:

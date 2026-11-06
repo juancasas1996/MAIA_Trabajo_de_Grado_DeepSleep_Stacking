@@ -103,8 +103,8 @@ Revisan la lectura de las noches, los rasgos, el preprocesamiento y la red del m
 
 | Cuándo | Workflow | Qué hace |
 |---|---|---|
-| Cada PR a `main` y cada push a `main` | **Pruebas** | `pytest`, con una tabla de cada prueba en el resumen |
-| PR a `main` que cambia `modelos/`, `src/` o `despliegue/` | **E2E** | pruebas → despliega el candidato en un endpoint aparte → 32 noches de test al candidato y a producción → comenta en el PR MF1, κ, F1 por estadio, matriz de confusión y latencia → borra el candidato |
+| A mano (Actions → Pruebas → *Run workflow*) | **Pruebas** | `pytest`, con una tabla de cada prueba en el resumen. El E2E y el Despliegue las corren primero |
+| PR a `main` que cambia `modelos/`, `src/`, `despliegue/`, `tests/` o `pyproject.toml` | **E2E** | pruebas → despliega el candidato en un endpoint aparte → 32 noches de test al candidato y a producción → comenta en el PR MF1, κ, F1 por estadio, matriz de confusión y latencia → borra el candidato |
 | Merge a `main` que cambia esas carpetas | **Despliegue** | pruebas → registra la versión en MLflow → actualiza el endpoint de producción → prueba de humo → tag `modelo-v<versión>` |
 
 El modelo nunca llega a producción sin el merge de una persona. Detalles, secrets y uso local en [`despliegue/README.md`](despliegue/README.md).
