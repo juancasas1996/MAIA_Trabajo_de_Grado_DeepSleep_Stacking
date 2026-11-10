@@ -11,9 +11,9 @@ Clasificación automática de los estadios del sueño (W, N1, N2, N3, REM) en é
 | Modelo | Entrada | Idea |
 |---|---|---|
 | **XGBoost** | 719 rasgos por época (espectro, forma de la señal, ondículas, pendiente 1/f y contexto de las épocas vecinas) | un único XGBoost para las 12 combinaciones: en el entrenamiento se apagan canales al azar (sus columnas se ponen en NaN) |
-| **CNN-BiLSTM** | la señal cruda, 20 épocas seguidas | una CNN + Transformer resume cada época y canal en un vector, se promedian los canales presentes y una BiLSTM mira las épocas de antes y de después; en el entrenamiento se sortea la combinación de canales de cada trozo |
+| **CNN-Transformer** | la señal cruda, 80 épocas seguidas | una CNN + Transformer resume cada época y canal en un vector, se promedian los canales presentes y un segundo Transformer relaciona las 80 épocas del trozo; en el entrenamiento se sortea la combinación de canales de cada trozo |
 
-El codificador de época de la CNN-BiLSTM es una reimplementación propia de SleepEffFormer (Paul et al., 2026).
+El codificador de época de la CNN-Transformer es una reimplementación propia de SleepEffFormer (Paul et al., 2026). La CNN-Transformer reemplaza a la CNN-BiLSTM de la versión anterior, que miraba 20 épocas con una BiLSTM.
 
 ## Contenido
 
@@ -22,15 +22,15 @@ El codificador de época de la CNN-BiLSTM es una reimplementación propia de Sle
 │   ├── xgboost/
 │   │   ├── 1_preprocesamiento.ipynb   lee las noches y calcula los 719 rasgos por época
 │   │   └── 2_entrenamiento.ipynb      validación cruzada, modelo final y resultados
-│   └── cnn_bilstm/
+│   └── cnn_transformer/
 │       ├── 1_preprocesamiento.ipynb   filtra y normaliza la señal de cada noche
 │       └── 2_entrenamiento.ipynb      arquitectura, validación cruzada, modelo final y resultados
 ├── modelo/
 │   ├── xgboost/
 │   │   ├── xgb.json                   el modelo entrenado (612 rondas)
 │   │   └── columnas.json              los 719 rasgos de entrada, en orden
-│   └── cnn_bilstm/
-│       └── modelo_final.pt            pesos e hiperparámetros de la red (659 685 parámetros)
+│   └── cnn_transformer/
+│       └── modelo_final.pt            pesos e hiperparámetros de la red (660 069 parámetros)
 ├── particiones.json                   partición por sujeto: 16 de test + 5 folds sobre 62
 ├── requirements.txt
 └── data/                              los datos (no se suben al repositorio)
@@ -60,14 +60,14 @@ Con Python 3.11, los notebooks de cada modelo se corren en orden:
 |---|---|
 | `xgboost/1_preprocesamiento.ipynb` | rasgos de las 153 noches → `data/procesados/xgboost/rasgos.parquet` |
 | `xgboost/2_entrenamiento.ipynb` | 5 folds + modelo final → `modelo/xgboost/` |
-| `cnn_bilstm/1_preprocesamiento.ipynb` | señal filtrada y normalizada → `data/procesados/cnn_bilstm/noches/` |
-| `cnn_bilstm/2_entrenamiento.ipynb` | 5 folds + modelo final, en paralelo en una GPU → `modelo/cnn_bilstm/` |
+| `cnn_transformer/1_preprocesamiento.ipynb` | señal filtrada y normalizada → `data/procesados/cnn_transformer/noches/` |
+| `cnn_transformer/2_entrenamiento.ipynb` | 5 folds + modelo final, en paralelo en una GPU → `modelo/cnn_transformer/` |
 
-El XGBoost corre en CPU. La CNN-BiLSTM necesita una GPU NVIDIA; se entrenó en una A100 de Google Colab. En Colab, el repositorio va en Google Drive, en `MyDrive/prueba_MAIA_Trabajo_de_Grado_DeepSleep_Stacking`, con los EDF en su `data/sleep-cassette/`.
+El XGBoost corre en CPU. La CNN-Transformer necesita una GPU NVIDIA; se entrenó en una A100 de Google Colab. En Colab, el repositorio va en Google Drive, en `MyDrive/prueba_MAIA_Trabajo_de_Grado_DeepSleep_Stacking`, con los EDF en su `data/sleep-cassette/`.
 
 **Reproducibilidad (semilla 42):**
 - XGBoost: es determinista. Da 592, 656, 660, 508 y 644 rondas en los folds, 612 en el modelo final, y reproduce byte a byte los archivos de `modelo/xgboost/`.
-- CNN-BiLSTM: en una A100, las mejores pasadas son 63, 59, 59, 90 y 44 en los folds y 94 en el modelo final. En otra GPU los decimales pueden cambiar un poco.
+- CNN-Transformer: en una A100, las mejores pasadas son 96, 74, 89, 75 y 35 en los folds y 88 en el modelo final. En otra GPU los decimales pueden cambiar un poco.
 
 ## Partición
 
@@ -83,7 +83,7 @@ Toda partición es **por sujeto**: las dos noches de una persona van siempre jun
   <tr><td>Fold 5</td><td>1, 3, 6, 7, 20, 35, 44, 47, 58, 65, 66, 71</td></tr>
 </table>
 
-Los 5 folds suman los 62 sujetos de desarrollo. En cada fold, 5 de los sujetos de entrenamiento se apartan como validación para la parada temprana (por ejemplo, en el fold 1 son 5, 40, 58, 75 y 80). El modelo final del XGBoost se entrena con los 62, sin validación; el de la CNN-BiLSTM, con 56, y aparta 6 para elegir la mejor pasada.
+Los 5 folds suman los 62 sujetos de desarrollo. En cada fold, 5 de los sujetos de entrenamiento se apartan como validación para la parada temprana (por ejemplo, en el fold 1 son 5, 40, 58, 75 y 80). El modelo final del XGBoost se entrena con los 62, sin validación; el de la CNN-Transformer, con 56, y aparta 6 para elegir la mejor pasada.
 
 ## Resultados
 
@@ -106,36 +106,56 @@ Los 5 folds suman los 62 sujetos de desarrollo. En cada fold, 5 de los sujetos d
 | Pz-Oz + EOG + EMG | 0.768 | 0.731 | 0.701 | 0.458 |
 | **Los 4 canales** | **0.801** | **0.764** | **0.739** | **0.486** |
 
-### CNN-BiLSTM
+### CNN-Transformer
 
 | Canales | CV MF1 | Test MF1 | Test κ | Test F1 N1 |
 |---|---|---|---|---|
-| Solo Fpz-Cz | 0.754 | 0.750 | 0.727 | 0.496 |
-| Solo Pz-Oz | 0.721 | 0.698 | 0.659 | 0.452 |
-| Fpz-Cz + Pz-Oz | 0.767 | 0.755 | 0.733 | 0.502 |
-| Fpz-Cz + EOG | 0.780 | 0.761 | 0.733 | 0.522 |
-| Pz-Oz + EOG | 0.769 | 0.727 | 0.687 | 0.491 |
-| Fpz-Cz + Pz-Oz + EOG | 0.783 | 0.765 | 0.740 | 0.516 |
-| Fpz-Cz + EMG | 0.756 | 0.751 | 0.725 | 0.501 |
-| Pz-Oz + EMG | 0.725 | 0.707 | 0.668 | 0.470 |
-| Fpz-Cz + Pz-Oz + EMG | 0.770 | 0.754 | 0.731 | 0.502 |
-| Fpz-Cz + EOG + EMG | 0.779 | 0.758 | 0.730 | 0.514 |
-| Pz-Oz + EOG + EMG | 0.769 | 0.727 | 0.688 | 0.479 |
-| **Los 4 canales** | **0.784** | **0.762** | **0.736** | **0.512** |
+| Solo Fpz-Cz | 0.766 | 0.749 | 0.725 | 0.509 |
+| Solo Pz-Oz | 0.737 | 0.710 | 0.672 | 0.478 |
+| Fpz-Cz + Pz-Oz | 0.783 | 0.764 | 0.741 | 0.518 |
+| Fpz-Cz + EOG | 0.780 | 0.758 | 0.727 | 0.523 |
+| Pz-Oz + EOG | 0.770 | 0.737 | 0.698 | 0.496 |
+| Fpz-Cz + Pz-Oz + EOG | 0.790 | 0.768 | 0.741 | 0.525 |
+| Fpz-Cz + EMG | 0.772 | 0.752 | 0.727 | 0.514 |
+| Pz-Oz + EMG | 0.740 | 0.713 | 0.674 | 0.480 |
+| Fpz-Cz + Pz-Oz + EMG | 0.784 | 0.764 | 0.740 | 0.523 |
+| Fpz-Cz + EOG + EMG | 0.781 | 0.756 | 0.724 | 0.522 |
+| Pz-Oz + EOG + EMG | 0.769 | 0.740 | 0.702 | 0.495 |
+| **Los 4 canales** | **0.789** | **0.764** | **0.736** | **0.524** |
 
 ### F1 por estadio en el test
 
 | Modelo | Canales | W | N1 | N2 | N3 | REM |
 |---|---|---|---|---|---|---|
 | XGBoost | Solo Fpz-Cz | 0.890 | 0.405 | 0.813 | 0.771 | 0.756 |
-| CNN-BiLSTM | Solo Fpz-Cz | 0.918 | 0.496 | 0.813 | 0.738 | 0.784 |
+| CNN-Transformer | Solo Fpz-Cz | 0.915 | 0.509 | 0.803 | 0.712 | 0.805 |
 | XGBoost | Los 4 canales | 0.918 | 0.486 | 0.817 | 0.789 | 0.811 |
-| CNN-BiLSTM | Los 4 canales | 0.919 | 0.512 | 0.811 | 0.736 | 0.832 |
+| CNN-Transformer | Los 4 canales | 0.921 | 0.524 | 0.795 | 0.726 | 0.854 |
+
+### De la CNN-BiLSTM a la CNN-Transformer
+
+MF1 de la CV de las dos redes, con la misma partición, el mismo preprocesamiento y casi el mismo número de parámetros (659 685 frente a 660 069).
+
+| Canales | CNN-BiLSTM (20 épocas) | CNN-Transformer (80 épocas) | Diferencia |
+|---|---|---|---|
+| Solo Fpz-Cz | 0.754 | 0.766 | +0.012 |
+| Solo Pz-Oz | 0.721 | 0.737 | +0.016 |
+| Fpz-Cz + Pz-Oz | 0.767 | 0.783 | +0.016 |
+| Fpz-Cz + EOG | 0.780 | 0.780 | +0.000 |
+| Pz-Oz + EOG | 0.769 | 0.770 | +0.001 |
+| Fpz-Cz + Pz-Oz + EOG | 0.783 | 0.790 | +0.007 |
+| Fpz-Cz + EMG | 0.756 | 0.772 | +0.016 |
+| Pz-Oz + EMG | 0.725 | 0.740 | +0.015 |
+| Fpz-Cz + Pz-Oz + EMG | 0.770 | 0.784 | +0.014 |
+| Fpz-Cz + EOG + EMG | 0.779 | 0.781 | +0.002 |
+| Pz-Oz + EOG + EMG | 0.769 | 0.769 | +0.000 |
+| Los 4 canales | 0.784 | 0.789 | +0.005 |
 
 **Qué significa:**
 
 - Los dos modelos sirven para las 12 combinaciones, y a los dos les va mejor con más canales. El EOG es el canal que más aporta, y Fpz-Cz funciona mejor que Pz-Oz.
-- **En la CV, la CNN-BiLSTM queda por debajo del XGBoost** en MF1: entre 0.01 y 0.02 en 10 de las 12 combinaciones. Solo con Pz-Oz + EOG (con o sin EMG) queda igual o un poco arriba. En el test, en cambio, la red queda por encima con Fpz-Cz (0.750 frente a 0.727) y muy cerca con los 4 canales (0.762 frente a 0.764).
-- **La red le gana al XGBoost en N1** en todas las combinaciones, entre +0.02 y +0.09 de F1 en el test, y también en REM. El XGBoost es mejor en N3.
-- La meta del proyecto con un solo EEG es MF1 ≥ 0.75 y κ ≥ 0.70. Con solo Fpz-Cz, la CNN-BiLSTM llega justo a la meta (0.750 y 0.727); el XGBoost no la alcanza en MF1 (0.727). Con solo Pz-Oz, ninguno de los dos llega.
-- Cada modelo tiene sus fortalezas: el XGBoost mira rasgos de cada época y es mejor en N3, y la red aprende de la señal cruda y de las épocas vecinas y es mejor en N1 y REM.
+- **Mirar 80 épocas en lugar de 20 mejora la red:** en la CV, la CNN-Transformer supera a la CNN-BiLSTM en 10 de las 12 combinaciones y empata en las otras 2 (+0.009 en promedio). La ganancia está en las combinaciones sin EOG (+0.012 a +0.016); con EOG es pequeña (0 a +0.007). Por eso se adopta la CNN-Transformer.
+- **En la CV, la red queda cerca del XGBoost:** entre −0.012 y +0.009 de MF1. Queda por debajo en las combinaciones con Fpz-Cz y un poco por encima en las 4 que solo tienen Pz-Oz. En el test, la red queda por encima en 9 de las 12 combinaciones y a ±0.001 en las otras 3.
+- **La red le gana al XGBoost en N1** en todas las combinaciones, entre +0.04 y +0.10 de F1 en el test, y también en REM. El XGBoost es mejor en N2 y sobre todo en N3.
+- La meta del proyecto con un solo EEG es MF1 ≥ 0.75 y κ ≥ 0.70. Con solo Fpz-Cz, la CNN-Transformer queda en el límite (MF1 0.749, κ 0.725); el XGBoost no alcanza la meta de MF1 (0.727). Con solo Pz-Oz, ninguno de los dos llega.
+- Cada modelo tiene sus fortalezas: el XGBoost mira rasgos de cada época y es mejor en N2 y N3, y la red aprende de la señal cruda y de las épocas vecinas y es mejor en N1 y REM.
