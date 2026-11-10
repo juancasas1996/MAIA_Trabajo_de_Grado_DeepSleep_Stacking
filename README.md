@@ -27,7 +27,8 @@ El codificador de época de la CNN-Transformer es una reimplementación propia d
 │   │   ├── 1_preprocesamiento.ipynb   filtra y normaliza la señal de cada noche
 │   │   └── 2_entrenamiento.ipynb      arquitectura, validación cruzada, modelo final y resultados
 │   └── meta_modelo/
-│       └── entrenamiento.ipynb        combina A y B: validación cruzada, modelo final y resultados
+│       ├── 1_entrenamiento.ipynb      combina A y B: validación cruzada, modelo final y resultados
+│       └── 2_confianza.ipynb          canales al azar por noche, umbral de confianza y aviso por noche
 ├── modelo/
 │   ├── modelo_a_xgboost/
 │   │   ├── xgb.json                   el modelo entrenado (612 rondas)
@@ -38,7 +39,7 @@ El codificador de época de la CNN-Transformer es una reimplementación propia d
 │   │   ├── meta_lr.joblib             la regresión logística, con su estandarización
 │   │   ├── meta_xgb.json              el XGBoost (281 rondas)
 │   │   └── columnas.json              las 54 entradas, en orden
-│   └── sistema.json                   qué archivos forman el sistema y cómo se combinan
+│   └── sistema.json                   qué archivos forman el sistema, cómo se combinan, umbral de confianza y aviso por noche
 ├── particiones.json                   partición por sujeto: 16 de test + 5 folds sobre 62
 ├── requirements.txt
 └── data/                              los datos (no se suben al repositorio)
@@ -70,7 +71,8 @@ Con Python 3.11, los notebooks de cada modelo se corren en orden. El meta-modelo
 | `modelo_a_xgboost/2_entrenamiento.ipynb` | 5 folds + modelo final → `modelo/modelo_a_xgboost/` |
 | `modelo_b_red/1_preprocesamiento.ipynb` | señal filtrada y normalizada → `data/procesados/modelo_b_red/noches/` |
 | `modelo_b_red/2_entrenamiento.ipynb` | 5 folds + modelo final, en paralelo en una GPU → `modelo/modelo_b_red/` |
-| `meta_modelo/entrenamiento.ipynb` | 5 folds + modelo final con las predicciones de A y B → `modelo/meta_modelo/` y `modelo/sistema.json` |
+| `meta_modelo/1_entrenamiento.ipynb` | 5 folds + modelo final con las predicciones de A y B → `modelo/meta_modelo/` y `modelo/sistema.json` |
+| `meta_modelo/2_confianza.ipynb` | umbral de confianza y aviso por noche, elegidos con la CV → `modelo/sistema.json` |
 
 El XGBoost y el meta-modelo corren en CPU. La CNN-Transformer necesita una GPU NVIDIA; se entrenó en una A100 de Google Colab. En Colab, el repositorio va en Google Drive, en `MyDrive/prueba_MAIA_Trabajo_de_Grado_DeepSleep_Stacking`, con los EDF en su `data/sleep-cassette/`.
 
@@ -171,6 +173,38 @@ Diferencia de MF1 en el test, con su IC 95 % pareado (mismas remuestras para tod
 | B: CNN-Transformer | Los 4 canales | 0.921 | 0.524 | 0.795 | 0.726 | 0.854 |
 | **Meta-modelo** | Los 4 canales | **0.925** | **0.534** | **0.822** | **0.792** | 0.848 |
 
+### Canales al azar por noche
+
+En la práctica cada paciente llega con una combinación distinta de canales. En cada una de 2000 remuestras de sujetos del test, a cada noche se le sortea una de las 12 combinaciones:
+
+| Modelo | MF1 [IC 95 %] | κ | F1 N1 | Exactitud |
+|---|---|---|---|---|
+| A: XGBoost | 0.739 [0.695, 0.776] | 0.712 | 0.453 | 0.786 |
+| B: CNN-Transformer | 0.748 [0.707, 0.779] | 0.717 | 0.509 | 0.787 |
+| **Meta-modelo** | **0.768** [0.730, 0.799] | **0.740** | **0.519** | **0.805** |
+
+El meta-modelo supera a A en +0.029 [+0.015, +0.047] y a B en +0.021 [+0.004, +0.038], las dos de forma significativa.
+
+### Confianza
+
+La confianza de una época es la probabilidad de la clase elegida. Si es menor que el umbral, la época se marca **revisar** y el técnico recibe la 1.ª y la 2.ª opción. Las dos reglas se fijaron con la CV, antes de mirar el test:
+- **umbral:** el menor de 0.50, 0.55, …, 0.95 con el que lo que entrega el sistema acierta al menos el 90 % en la CV. Resultado: **0.65** (en la CV entrega el 82.6 % de la noche con acierto 0.910);
+- **aviso por noche:** si la fracción a revisar supera el percentil 90 de las noches de la CV, se sugiere revisar la noche completa. Resultado: **27.4 %**.
+
+Los dos quedan en `modelo/sistema.json`. Test con el umbral 0.65:
+
+| Canales | Entrega el sistema [IC 95 %] | Acierto en lo que entrega [IC 95 %] | Correcta entre 2 opciones en "revisar" | Acierto sin → con revisión |
+|---|---|---|---|---|
+| Solo Fpz-Cz | 80.3 % [76.9, 83.2] | 0.887 [0.864, 0.908] | 0.855 | 0.813 → 0.881 |
+| Solo Pz-Oz | 77.9 % [74.9, 80.8] | 0.848 [0.772, 0.896] | 0.879 | 0.778 → 0.855 |
+| Fpz-Cz + EOG | 81.1 % [78.4, 83.6] | 0.890 [0.870, 0.908] | 0.852 | 0.816 → 0.882 |
+| Los 4 canales | 82.8 % [79.6, 85.4] | 0.884 [0.862, 0.905] | 0.869 | 0.818 → 0.881 |
+| **Canales al azar por noche** | **80.5 %** [77.4, 83.3] | **0.878** [0.839, 0.903] | **0.861** | **0.805 → 0.874** |
+
+"Con revisión" supone que el técnico elige bien entre las 2 opciones. En el test, 56 de las 384 noches × combinación disparan el aviso, y su acierto medio es 0.726, frente a 0.818 en las demás.
+
+**Calibración (ECE):** 0.003 en la CV y 0.022 en el test, solo con Fpz-Cz. En el test el sistema está algo sobreconfiado: confianza media 0.835 frente a acierto 0.813.
+
 ### De la CNN-BiLSTM a la CNN-Transformer
 
 MF1 de la CV de las dos redes, con la misma partición, el mismo preprocesamiento y casi el mismo número de parámetros (659 685 frente a 660 069).
@@ -198,3 +232,6 @@ MF1 de la CV de las dos redes, con la misma partición, el mismo preprocesamient
 - **El meta-modelo es el mejor modelo en las 12 combinaciones.** En la CV gana entre +0.02 y +0.03 de MF1 sobre el mejor de A y B. En el test supera de forma significativa a A en las 12 y a B en 8. Por estadio, mejora a los dos en casi todo; solo en REM con los 4 canales B sigue un poco mejor (0.854 frente a 0.848).
 - **Frente a la votación simple, la ganancia es pequeña:** +0.003 a +0.008 en la CV y −0.001 a +0.007 en el test, sin ninguna diferencia significativa. Casi toda la mejora viene de juntar dos formas distintas de ver la noche, no de lo sofisticado del meta-modelo.
 - **La meta del proyecto con un solo EEG es MF1 ≥ 0.75 y κ ≥ 0.70.** Con solo Fpz-Cz el meta-modelo la cumple (0.773 y 0.750), mientras que A y B por separado no. Con solo Pz-Oz no llega en MF1 (0.737), aunque sí en κ (0.704).
+- **Con canales al azar por noche, el sistema da MF1 0.768** [0.730, 0.799] y κ 0.740: es la cifra que se espera con cualquier paciente, y supera de forma significativa a A y a B.
+- **Con el umbral de 0.65, el sistema entrega solo ~80 % de la noche con ~88 % de acierto** y marca el ~20 % restante para revisión. Ahí la correcta está entre las 2 opciones el 86 % de las veces, así que con la revisión el acierto de la noche sube de 0.80 a 0.87.
+- **El aviso por noche sirve:** las noches que lo disparan aciertan bastante menos (0.73 frente a 0.82).
