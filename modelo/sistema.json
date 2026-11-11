@@ -12,7 +12,8 @@
     "eog",
     "emg"
   ],
-  "modelo_a": "modelo_a_xgboost/xgb.json (entradas en modelo_a_xgboost/columnas.json; canales ausentes en NaN)",
+  "carpeta_modelo_a": "modelo_a_xgboost_100_features",
+  "modelo_a": "modelo_a_xgboost_100_features/xgb.json (entradas en modelo_a_xgboost_100_features/columnas.json; canales ausentes en NaN)",
   "modelo_b": "modelo_b_red/modelo_final.pt",
   "meta_modelo": "promedio de las probabilidades de meta_modelo/meta_lr.joblib y meta_modelo/meta_xgb.json",
   "entradas_meta": "meta_modelo/columnas.json: log-probabilidades de A y B en las épocas vecinas y máscara de canales",
@@ -26,5 +27,5 @@
   "relleno_bordes": "log(1/5) en las épocas que no existen antes del inicio o después del final de la noche",
   "relleno_sin_etiqueta": "las épocas que B no predice toman la probabilidad de B de la época anterior",
   "umbral_confianza": 0.65,
-  "aviso_noche_fraccion_revisar": 0.2737
+  "aviso_noche_fraccion_revisar": 0.2774
 }

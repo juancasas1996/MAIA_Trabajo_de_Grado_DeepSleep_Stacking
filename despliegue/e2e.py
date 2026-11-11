@@ -193,8 +193,9 @@ def informe(r):
         if m:
             L += [f"**{nombre}**", "", _confusion_md(m["confusion"]), ""]
     L += ["</details>", "",
-          "⬆️/⬇️: diferencia significativa (el IC no cruza 0). Producción no se toca: si se hace merge, el workflow de "
-          "despliegue publica este modelo."]
+          "⬆️/⬇️: diferencia significativa (el IC no cruza 0). Producción no se toca: este modelo se publica solo si se "
+          "hace merge y el PR cambia lo que va dentro del endpoint (`modelo/`, `sistema/`, `despliegue/inference.py` o "
+          "`despliegue/requirements.txt`)."]
     return "\n".join(L) + "\n"
 
 
