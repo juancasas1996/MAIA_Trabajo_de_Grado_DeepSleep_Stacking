@@ -5,13 +5,24 @@ El sistema se sirve en un **endpoint asíncrono de SageMaker** (`sistema-sueno`,
 ## Flujo con GitHub Actions
 
 ```
-merge de un PR a main que cambie modelo/, sistema/ o despliegue/
-                                            │  el merge es la aprobación humana
-                                            ▼
-        workflow "Despliegue"   registra en MLflow ─► actualiza sistema-sueno ─► prueba de humo ─► tag modelo-v<versión>
+PR a main que cambie modelo/, sistema/, despliegue/ o tests/
+        │
+        ▼
+workflow "E2E"          pruebas ─► registra el candidato en MLflow ─► endpoint candidato aparte ─► 32 noches de test
+                        al candidato y a producción ─► comentario en el PR con la comparación ─► borra el candidato
+        │
+        │  una persona revisa el comentario y hace merge (o no)
+        ▼
+merge a main que cambie lo que va dentro del endpoint: modelo/, sistema/, despliegue/inference.py o
+despliegue/requirements.txt (si solo cambian el E2E, los scripts o las pruebas, no se despliega nada)
+        │
+        ▼
+workflow "Despliegue"   pruebas ─► registra en MLflow ─► actualiza sistema-sueno ─► prueba de humo ─► tag modelo-v<versión>
 ```
 
-- **El modelo nunca se despliega en producción sin el merge** de una persona.
+- **El modelo nunca se despliega en producción sin el merge** de una persona. El E2E no decide nada: muestra si el candidato es mejor, igual o peor que producción.
+- En el E2E, a cada noche de test se le sortea una de las 12 combinaciones de canales (semilla 42), la misma para el candidato y para producción. El comentario trae MF1, κ, exactitud y F1 por estadio con su IC 95 % por bootstrap agrupado por persona, la diferencia pareada candidato − producción, la latencia por noche y las matrices de confusión.
+- Si el E2E falla a la mitad, el endpoint candidato se borra igual.
 - Si la actualización del endpoint falla, SageMaker se queda con la versión anterior.
 - Para volver a una versión anterior: revertir el PR y hacer merge del revert, o `python despliegue/desplegar.py produccion <versión>`.
 
@@ -30,10 +41,11 @@ La cuenta, el bucket (`maia-g3-sueno-<cuenta>`), el rol (`LabRole`) y la app de 
 
 | Archivo | Qué hace |
 |---|---|
+| `e2e.py` | E2E de un PR: candidato frente a producción en las 32 noches de test, informe para el PR |
 | `inference.py` | lo que corre dentro del endpoint: baja el EDF de S3 y llama a `sistema.analizar` |
 | `modelo_mlflow.py` | el sistema como modelo de MLflow (pyfunc) |
 | `registrar.py` | registra `modelo/` + `sistema/` como una versión nueva en MLflow |
-| `desplegar.py` | `produccion [versión]`: actualiza el endpoint de producción |
+| `desplegar.py` | `produccion [versión]`: actualiza el endpoint de producción; `borrar <endpoint>`: borra un endpoint candidato |
 | `humo.py` | prueba de humo después de desplegar: una noche de test con los 4 canales (las noches de test y sus estadios ya están en S3, en `sistema-sueno/test/`) |
 | `cliente.py` | manda peticiones al endpoint asíncrono y recoge las respuestas |
 | `config.py` | nombres de los recursos de AWS |
@@ -49,6 +61,7 @@ pip install -r requirements.txt -r despliegue/requirements-aws.txt
 python despliegue/registrar.py                     # versión nueva en MLflow
 python despliegue/desplegar.py produccion          # la última versión registrada, a producción
 python despliegue/humo.py                          # una noche de test al endpoint
+python despliegue/e2e.py --nombre prueba          # E2E a mano (crea y borra sistema-sueno-prueba)
 ```
 
 **Petición al endpoint** (JSON en S3): `{"s3_uri": "s3://.../SC4001E0-PSG.edf", "canales": ["fpz", "eog"], "hora_apagado": "22:44:00", "epoca_inicio": 800, "epoca_fin": 1700}`. Solo `s3_uri` es obligatorio. La respuesta es la de `sistema.analizar`: por época, el estadio, la confianza, la 2.ª opción, su probabilidad, si hay que revisarla y las 5 probabilidades; para la noche, la fracción a revisar, el aviso y `segundos_proceso`.

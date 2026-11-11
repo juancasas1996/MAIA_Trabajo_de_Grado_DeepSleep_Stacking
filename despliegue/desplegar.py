@@ -1,10 +1,11 @@
-"""Despliega una versión de MLflow de "sistema-sueno" en el endpoint asíncrono de producción.
+"""Endpoints asíncronos de SageMaker a partir de una versión de MLflow de "sistema-sueno".
 
-    python despliegue/desplegar.py produccion [versión]     por defecto, la última versión registrada; le pone el
-                                                           alias "produccion"
+    python despliegue/desplegar.py produccion [versión]     despliega en el endpoint de producción (por defecto, la
+                                                           última versión registrada) y le pone el alias "produccion"
+    python despliegue/desplegar.py borrar <endpoint>       borra un endpoint candidato y su configuración
 
 Producción (endpoint "sistema-sueno") se apaga sola tras unos minutos sin peticiones y se prende cuando llega una
-(~8 min).
+(~8 min). Los endpoints candidatos (los crea e2e.py) tienen una máquina fija y se borran al terminar.
 """
 import sys
 import tarfile
@@ -84,6 +85,30 @@ def version_desplegada(endpoint):
     return sm.describe_model(ModelName=modelo)["PrimaryContainer"]["Environment"].get("MLFLOW_VERSION_SISTEMA")
 
 
+def crear_candidato(endpoint, version):
+    """Endpoint aparte con una máquina fija, para el E2E. Producción no se toca."""
+    _sm().create_endpoint(EndpointName=endpoint, EndpointConfigName=configuracion(endpoint, version))
+    print(f"creando el endpoint candidato {endpoint} con la versión {version}…")
+    esperar(endpoint)
+    print(f"{endpoint} en servicio")
+
+
+def borrar(endpoint):
+    """Borra el endpoint, su configuración y su modelo de SageMaker (no toca MLflow ni S3)."""
+    sm = _sm()
+    try:
+        cfg = sm.describe_endpoint(EndpointName=endpoint)["EndpointConfigName"]
+    except sm.exceptions.ClientError:
+        print(f"{endpoint} no existe")
+        return
+    modelos = [v["ModelName"] for v in sm.describe_endpoint_config(EndpointConfigName=cfg)["ProductionVariants"]]
+    sm.delete_endpoint(EndpointName=endpoint)
+    sm.delete_endpoint_config(EndpointConfigName=cfg)
+    for m in modelos:
+        sm.delete_model(ModelName=m)
+    print(f"{endpoint} borrado")
+
+
 # --- producción: apagado automático ---------------------------------------------------------------------------------
 
 def _recurso(endpoint):
@@ -154,8 +179,11 @@ def desplegar_produccion(version):
 
 
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] != "produccion":
+    if len(sys.argv) < 2 or sys.argv[1] not in ("produccion", "borrar"):
         sys.exit(__doc__)
+    if sys.argv[1] == "borrar":
+        borrar(sys.argv[2])
+        return
     mlflow.set_tracking_uri(C.mlflow_arn())
     version = sys.argv[2] if len(sys.argv) > 2 else max(
         int(v.version) for v in MlflowClient().search_model_versions(f"name='{C.MODELO}'"))
