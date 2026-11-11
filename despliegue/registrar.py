@@ -33,7 +33,7 @@ def commit():
 
 def describir_modelos(modelo=RAIZ / "modelo"):
     sistema = json.loads((modelo / "sistema.json").read_text())
-    cols_a = json.loads((modelo / "modelo_a_xgboost" / "columnas.json").read_text())
+    cols_a = json.loads((modelo / sistema.get("carpeta_modelo_a", "modelo_a_xgboost") / "columnas.json").read_text())
     cols_meta = json.loads((modelo / "meta_modelo" / "columnas.json").read_text())
     return {"modelo_a": f"XGBoost, {len(cols_a)} columnas", "modelo_b": "CNN + Transformer, 80 épocas",
             "meta_modelo": f"LR + XGBoost, {len(cols_meta)} entradas",

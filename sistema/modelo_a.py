@@ -1,9 +1,11 @@
-"""Modelo A: 719 rasgos por época + XGBoost con canales enmascarados.
+"""Modelo A: rasgos por época + XGBoost con canales enmascarados.
 
 Los rasgos son los de experimentacion/modelo_a_xgboost/1_preprocesamiento.ipynb, calculados para una sola noche.
-Solo se calculan los de los canales presentes; los demás quedan en NaN, como en el entrenamiento.
+Solo se calculan los de los canales presentes; los demás quedan en NaN, como en el entrenamiento. Al predecir, se
+calculan solo los que usa el modelo (las columnas de columnas.json).
 """
 import json
+import re
 from pathlib import Path
 
 import antropy as ant
@@ -27,6 +29,16 @@ KEY_SUFFIXES = [
     "ap_slope", "dwt_cD2_logenergy", "dwt_cD3_logenergy", "dwt_cA4_logenergy",
 ]
 CROSS = {"corr_fpz": "fpz"}  # rasgos con prefijo de un canal que también usan otro
+
+
+def rasgo_base(col):
+    """fpz_abs_beta_z_roll15 -> fpz_abs_beta: el rasgo de la época del que sale una columna."""
+    return re.fullmatch(r"(.+?)(?:_z(?:_roll\d+|_lag[pm]\d)?)?", col).group(1)
+
+
+def _quiere(pedir):
+    """pedir: rasgos base a calcular (None = todos)."""
+    return lambda nombre: pedir is None or nombre in pedir
 
 
 def _band_power(f, psd, lo, hi):
@@ -59,7 +71,8 @@ def eeg_spectral(x, p):
     return out
 
 
-def eeg_shape(x, p):
+def eeg_shape(x, p, pedir=None):
+    quiere = _quiere(pedir)
     out = {}
     out[f"{p}_std"] = x.std(1)
     q75, q25 = np.percentile(x, [75, 25], axis=1)
@@ -70,8 +83,10 @@ def eeg_shape(x, p):
     out[f"{p}_hjorth_mob"], out[f"{p}_hjorth_comp"] = mob, comp
     out[f"{p}_zcr"] = ant.num_zerocross(x, normalize=True, axis=1)
     out[f"{p}_line_length"] = np.abs(np.diff(x, axis=1)).mean(1)
-    out[f"{p}_perm_entropy"] = np.array([ant.perm_entropy(v, order=3, normalize=True) for v in x])
-    out[f"{p}_higuchi"] = np.array([ant.higuchi_fd(v.astype(np.float64)) for v in x])
+    if quiere(f"{p}_perm_entropy"):
+        out[f"{p}_perm_entropy"] = np.array([ant.perm_entropy(v, order=3, normalize=True) for v in x])
+    if quiere(f"{p}_higuchi"):
+        out[f"{p}_higuchi"] = np.array([ant.higuchi_fd(v.astype(np.float64)) for v in x])
     return out
 
 
@@ -90,8 +105,12 @@ def eeg_subwindows(x, p):
     return out
 
 
-def eeg_features(x, p):
-    return {**eeg_spectral(x, p), **eeg_shape(x, p), **eeg_subwindows(x, p)}
+def eeg_features(x, p, pedir=None):
+    """pedir: rasgos base a calcular (None = todos)."""
+    out = {**eeg_spectral(x, p), **eeg_shape(x, p, pedir)}
+    if pedir is None or any(r.startswith(f"{p}_sub_") for r in pedir):
+        out.update(eeg_subwindows(x, p))
+    return out
 
 
 def eog_features(x, fpz=None):
@@ -117,7 +136,8 @@ def emg_features(v):
             "emg_min": v.min(1), "emg_max": v.max(1), "emg_log_mean": np.log10(np.abs(v.mean(1)) + EPS)}
 
 
-def dwt_features(x, p):
+def dwt_features(x, p, pedir=None):
+    quiere = _quiere(pedir)
     out = {}
     coeffs = pywt.wavedec(x, "bior2.2", level=4, axis=-1)
     for band, c in zip(DWT_BANDS, coeffs):
@@ -128,8 +148,10 @@ def dwt_features(x, p):
         out[f"{q}_hjorth_mob"], out[f"{q}_hjorth_comp"] = mob, comp
         out[f"{q}_kurt"] = stats.kurtosis(c, axis=1)
         out[f"{q}_skew"] = stats.skew(c, axis=1)
-        out[f"{q}_katz"] = np.array([ant.katz_fd(v) for v in c])
-        out[f"{q}_petrosian"] = np.array([ant.petrosian_fd(v) for v in c])
+        if quiere(f"{q}_katz"):
+            out[f"{q}_katz"] = np.array([ant.katz_fd(v) for v in c])
+        if quiere(f"{q}_petrosian"):
+            out[f"{q}_petrosian"] = np.array([ant.petrosian_fd(v) for v in c])
     return out
 
 
@@ -167,29 +189,39 @@ def add_context(df, rolls=(5, 15), lags=(-2, -1, 1, 2)):
     return pd.concat(parts, axis=1)
 
 
-def rasgos_noche(noche):
-    """Tabla (épocas analizadas × rasgos) de los canales presentes, con contexto."""
+def rasgos_noche(noche, columnas=None):
+    """Tabla (épocas analizadas × rasgos) de los canales presentes, con contexto.
+
+    columnas: si se dan, solo se calculan los rasgos base que necesitan y la tabla trae solo esas columnas (las de
+    canales ausentes no aparecen). Cada columna sale con el mismo valor que en la tabla completa: el z-score y el
+    contexto de una columna dependen solo de su rasgo base.
+    """
+    pedir = None if columnas is None else {rasgo_base(c) for c in columnas}
+    hay = lambda prefijo: pedir is None or any(r.startswith(prefijo) for r in pedir)  # noqa: E731
     cut = lambda s: (s[: noche.n_registro * SPE] * 1e6).reshape(noche.n_registro, SPE)[noche.epocas]  # noqa: E731
     ep = {m: cut(noche.senales[m]) for m in noche.canales if m != "emg"}   # V -> µV
     feats = {}
     for m in ("fpz", "pz"):
-        if m in ep:
-            feats.update(eeg_features(ep[m], m))
-    if "eog" in ep:
+        if m in ep and hay(f"{m}_"):
+            feats.update(eeg_features(ep[m], m, pedir))
+    if "eog" in ep and hay("eog_"):
         feats.update(eog_features(ep["eog"], ep.get("fpz")))
-    if "emg" in noche.canales:
+    if "emg" in noche.canales and hay("emg_"):
         # MNE interpola el EMG (1 Hz) a 100 Hz: cada 100 muestras está el valor original
         emg = (noche.senales["emg"] * 1e6)[: noche.n_registro * SPE: FS].reshape(noche.n_registro, EPOCH)[noche.epocas]
         feats.update(emg_features(emg))
     for m in ("fpz", "pz", "eog"):
-        if m in ep:
-            feats.update(dwt_features(ep[m], m))
+        if m in ep and hay(f"{m}_dwt_"):
+            feats.update(dwt_features(ep[m], m, pedir))
     for m in ("fpz", "pz"):
-        if m in ep:
+        if m in ep and hay(f"{m}_ap_"):
             feats.update(aperiodic_features(ep[m], m))
     df = pd.DataFrame(feats).astype(np.float32)
     df.insert(0, "time_hours_since_lights_off", ((noche.epocas * EPOCH - noche.lights_off) / 3600).astype(np.float32))
-    return add_context(df)
+    if pedir is None:
+        return add_context(df)
+    df = add_context(df[[c for c in df.columns if c in pedir]])
+    return df[[c for c in columnas if c in df.columns]]
 
 
 def channel_index(cols):
@@ -204,7 +236,7 @@ def channel_index(cols):
 
 
 def cargar(directorio):
-    """XGBoost de modelo/modelo_a_xgboost y sus columnas de entrada, en orden."""
+    """XGBoost de una carpeta de modelo/ (xgb.json) y sus columnas de entrada (columnas.json), en orden."""
     d = Path(directorio)
     booster = xgb.Booster()
     booster.load_model(d / "xgb.json")
@@ -213,7 +245,7 @@ def cargar(directorio):
 
 def predecir(booster, columnas, noche):
     """Probabilidades (épocas analizadas, 5). Las columnas de los canales ausentes van en NaN."""
-    X = rasgos_noche(noche).reindex(columns=columnas).to_numpy(np.float32)
+    X = rasgos_noche(noche, columnas).reindex(columns=columnas).to_numpy(np.float32)
     idx = channel_index(columnas)
     for m in MODALIDADES:
         if m not in noche.canales:

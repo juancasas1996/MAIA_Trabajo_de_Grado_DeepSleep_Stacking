@@ -21,11 +21,17 @@ from .lectura import EPOCH, ESTADIOS, leer_noche
 MODELO = Path(__file__).resolve().parents[1] / "modelo"
 
 
+def carpeta_modelo_a(modelo=MODELO):
+    """Carpeta del XGBoost con que se entrenó el meta-modelo, según sistema.json."""
+    cfg = json.loads((Path(modelo) / "sistema.json").read_text())
+    return Path(modelo) / cfg.get("carpeta_modelo_a", "modelo_a_xgboost")
+
+
 def cargar_sistema(modelo=MODELO, device="cpu"):
     """Las tres piezas de modelo/ y la configuración de sistema.json, listas para predecir."""
     modelo = Path(modelo)
     cfg = json.loads((modelo / "sistema.json").read_text())
-    booster, columnas_a = modelo_a.cargar(modelo / "modelo_a_xgboost")
+    booster, columnas_a = modelo_a.cargar(carpeta_modelo_a(modelo))
     red, hp = modelo_b.cargar(modelo / "modelo_b_red" / "modelo_final.pt", device)
     lr, meta_xgb, columnas_meta = meta.cargar(modelo / "meta_modelo")
     return {"a": (booster, columnas_a), "b": (red, hp), "meta": (lr, meta_xgb, columnas_meta), "device": device,

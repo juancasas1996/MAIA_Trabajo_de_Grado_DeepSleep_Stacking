@@ -12,7 +12,7 @@ from conftest import noche_falsa
 
 from sistema.lectura import hypnogram_labels, sleep_window
 from sistema.modelo_a import rasgos_noche
-from sistema.prediccion import MODELO, probabilidades
+from sistema.prediccion import MODELO, carpeta_modelo_a, probabilidades
 
 
 def test_hipnograma_a_etiquetas(tmp_path):
@@ -34,9 +34,9 @@ def test_ventana_de_sueno():
 
 def test_estan_todas_las_piezas():
     """Los tres modelos y sistema.json están y son coherentes entre sí."""
-    cols_a = json.loads((MODELO / "modelo_a_xgboost/columnas.json").read_text())
+    cols_a = json.loads((carpeta_modelo_a() / "columnas.json").read_text())
     a = xgb.Booster()
-    a.load_model(MODELO / "modelo_a_xgboost/xgb.json")
+    a.load_model(carpeta_modelo_a() / "xgb.json")
     assert a.num_features() == len(cols_a)
     assert (MODELO / "modelo_b_red/modelo_final.pt").is_file()
     assert len(json.loads((MODELO / "meta_modelo/columnas.json").read_text())) == 54
@@ -47,10 +47,13 @@ def test_estan_todas_las_piezas():
 
 
 def test_modelo_a_coincide_con_los_rasgos():
-    """El XGBoost usa columnas que calcula el sistema con los 4 canales (todas o una parte), en el mismo orden."""
-    cols = json.loads((MODELO / "modelo_a_xgboost/columnas.json").read_text())
-    todas = list(rasgos_noche(noche_falsa()).columns)
-    assert [c for c in todas if c in set(cols)] == cols
+    """El XGBoost usa columnas que calcula el sistema con los 4 canales (todas o una parte), en el mismo orden, y
+    calcular solo esas da los mismos valores que calcular todas."""
+    cols = json.loads((carpeta_modelo_a() / "columnas.json").read_text())
+    noche = noche_falsa()
+    todas = rasgos_noche(noche)
+    assert [c for c in todas.columns if c in set(cols)] == cols
+    assert np.array_equal(rasgos_noche(noche, cols).to_numpy(), todas[cols].to_numpy(), equal_nan=True)
 
 
 @pytest.mark.parametrize("canales", [("fpz",), ("pz", "emg"), ("fpz", "pz", "eog", "emg")])
