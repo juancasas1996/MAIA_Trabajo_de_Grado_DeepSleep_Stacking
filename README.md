@@ -40,6 +40,13 @@ El codificador de época de la CNN-Transformer es una reimplementación propia d
 │   │   ├── meta_xgb.json              el XGBoost (281 rondas)
 │   │   └── columnas.json              las 54 entradas, en orden
 │   └── sistema.json                   qué archivos forman el sistema, cómo se combinan, umbral de confianza y aviso por noche
+├── sistema/                           código para predecir una noche nueva con los modelos de modelo/
+│   ├── lectura.py                     EDF (y, si hay, hipnograma) -> épocas de 30 s
+│   ├── modelo_a.py                    rasgos por época + XGBoost con canales enmascarados
+│   ├── modelo_b.py                    red CNN-Transformer sobre la señal cruda
+│   ├── meta.py                        meta-modelo que combina A y B
+│   └── prediccion.py                  junta todo: estadio, confianza, 2.ª opción y "revisar"
+├── despliegue/                        endpoint de SageMaker, registro en MLflow y prueba de humo (ver despliegue/README.md)
 ├── particiones.json                   partición por sujeto: 16 de test + 5 folds sobre 62
 ├── requirements.txt
 └── data/                              los datos (no se suben al repositorio)
@@ -80,6 +87,27 @@ El XGBoost y el meta-modelo corren en CPU. La CNN-Transformer necesita una GPU N
 - XGBoost: es determinista. Da 592, 656, 660, 508 y 644 rondas en los folds, 612 en el modelo final, y reproduce byte a byte los archivos de `modelo/modelo_a_xgboost/`.
 - CNN-Transformer: en una A100, las mejores pasadas son 96, 74, 89, 75 y 35 en los folds y 88 en el modelo final. En otra GPU los decimales pueden cambiar un poco.
 - Meta-modelo: su XGBoost da 459, 205, 198, 259 y 145 rondas en los folds y 281 en el modelo final. Como depende de las predicciones de la red, una diferencia de 10⁻⁷ en la GPU puede mover algunas rondas, pero las métricas cambian menos de 0.001.
+
+## Predecir una noche
+
+`sistema/` predice una noche nueva con los modelos ya entrenados de `modelo/`, sin volver a entrenar. Las funciones son las mismas de los notebooks:
+
+```python
+from sistema import cargar_sistema, predecir_noche
+
+sistema = cargar_sistema()   # carga las tres piezas una vez
+salida = predecir_noche("data/sleep-cassette/SC4001E0-PSG.edf", canales=("fpz",), sistema=sistema)
+```
+
+`salida` tiene una fila por época de 30 s con el estadio, la confianza, la 2.ª opción, si hay que revisarla y las probabilidades de los 5 estadios. En `salida.attrs` quedan la fracción de la noche a revisar y si se dispara el aviso por noche.
+
+- **Canales:** cualquier combinación con al menos un EEG, entre `fpz`, `pz`, `eog` y `emg`. Por defecto, los que tenga el EDF.
+- **Sin hipnograma** se analiza todo el registro, o el rango que se pida con `epoca_inicio=` y `epoca_fin=` (épocas de 30 s, con los dos extremos incluidos). Con `hipnograma=` se analiza la ventana de sueño, como en el entrenamiento.
+- **Hora de apagado de la luz:** con `hora_apagado="HH:MM:SS"`. Si no se da, se cuenta desde el inicio del registro.
+
+**Verificado contra los notebooks** (noches de test, 4 combinaciones de canales): el modelo A da las mismas probabilidades (diferencia 0). La red se entrenó y predijo en una GPU con media precisión, y en CPU sus probabilidades difieren hasta en 2·10⁻³; el estadio elegido cambia en 1 de cada 10 000 épocas en la red y en 3 de cada 10 000 en el meta-modelo.
+
+**En producción:** el endpoint asíncrono de SageMaker `sistema-sueno` corre `sistema.analizar` con los modelos de `modelo/`. Cada merge a `main` que cambie `modelo/`, `sistema/` o `despliegue/` registra una versión nueva en MLflow y actualiza el endpoint (ver [despliegue/README.md](despliegue/README.md)).
 
 ## Partición
 
