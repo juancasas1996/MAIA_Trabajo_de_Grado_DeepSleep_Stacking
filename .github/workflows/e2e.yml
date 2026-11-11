@@ -1,0 +1,89 @@
+# E2E de un modelo candidato: en cada PR a main que cambie modelo/, sistema/, despliegue/ o tests/.
+#   1. pruebas del sistema (si fallan, no sigue);
+#   2. despliega el candidato en un endpoint aparte de SageMaker (producción no se toca);
+#   3. manda las 32 noches de test al candidato y a producción y compara MF1, κ, F1 por estadio, matriz de confusión
+#      y latencia;
+#   4. comenta la comparación en el PR y borra el endpoint candidato.
+# Nada se despliega en producción aquí: eso pasa solo al hacer merge a main (workflow "Despliegue").
+name: E2E
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ["modelo/**", "sistema/**", "despliegue/**", "tests/**", "!**/*.md"]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false   # cancelar a la mitad dejaría el endpoint candidato prendido
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  pruebas:
+    uses: ./.github/workflows/pruebas.yml
+
+  e2e:
+    name: Candidato en SageMaker frente a producción
+    needs: pruebas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      AWS_REGION: us-east-1
+      CANDIDATO: pr-${{ github.event.pull_request.number || github.run_number }}
+      COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            despliegue/requirements.txt
+            despliegue/requirements-aws.txt
+
+      - name: Instalar
+        timeout-minutes: 10
+        run: |
+          pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r despliegue/requirements.txt -r despliegue/requirements-aws.txt
+
+      - name: Credenciales de AWS
+        env:
+          AWS_CREDENCIALES: ${{ secrets.AWS_CREDENCIALES }}
+        run: |
+          # el bloque [default] de AWS Academy (AWS Details → AWS CLI), tal cual, en ~/.aws/credentials
+          mkdir -p ~/.aws && printf '%s\n' "$AWS_CREDENCIALES" > ~/.aws/credentials
+          cuenta=$(python -c "import boto3; print(boto3.client('sts').get_caller_identity()['Account'])") \
+            || { echo "::error::Las credenciales de AWS no sirven o vencieron: pega de nuevo el bloque de AWS Details en el secret AWS_CREDENCIALES y vuelve a correr el workflow (Re-run jobs)."; exit 1; }
+          echo "::add-mask::$cuenta"   # el número de la cuenta (va en el nombre del bucket) no sale en los logs
+          echo "cuenta de AWS: ****${cuenta: -4}"
+
+      - name: E2E (registra, despliega el candidato, 32 noches, compara)
+        run: python despliegue/e2e.py --nombre "$CANDIDATO" --salida e2e
+
+      - name: Borrar el endpoint candidato
+        if: always()
+        run: python despliegue/desplegar.py borrar "sistema-sueno-$CANDIDATO" || true
+
+      - name: Resumen
+        if: always()
+        run: |
+          if [ -f e2e/e2e.md ]; then cat e2e/e2e.md >> "$GITHUB_STEP_SUMMARY"; else echo "El E2E no llegó a calcular métricas (ver el paso anterior)." >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Comentar en el PR
+        if: always() && github.event_name == 'pull_request' && hashFiles('e2e/e2e.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment ${{ github.event.pull_request.number }} --body-file e2e/e2e.md
+
+      - name: Guardar los resultados
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: e2e
+          path: e2e/
+          if-no-files-found: ignore

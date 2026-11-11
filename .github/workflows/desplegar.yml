@@ -1,5 +1,7 @@
-# Despliegue a producción: al llegar a main un merge que cambie modelo/, sistema/ o despliegue/.
+# Despliegue a producción: al llegar a main un merge que cambie lo que va dentro del endpoint (modelo/, sistema/,
+# despliegue/inference.py o despliegue/requirements.txt). Lo demás (E2E, scripts, pruebas) no despliega nada.
 # El merge del PR es la aprobación humana: el modelo nunca se despliega sin él.
+#   0. pruebas del sistema (si fallan, no sigue);
 #   1. registra en MLflow lo que quedó en main (versión nueva de "sistema-sueno");
 #   2. actualiza el endpoint "sistema-sueno" (si la actualización falla, SageMaker se queda con la versión anterior);
 #   3. prueba de humo con una noche de test;
@@ -9,7 +11,7 @@ name: Despliegue
 on:
   push:
     branches: [main]
-    paths: ["modelo/**", "sistema/**", "despliegue/**", "!**/*.md"]
+    paths: ["modelo/**", "sistema/**", "despliegue/inference.py", "despliegue/requirements.txt", "!**/*.md"]
   workflow_dispatch:
 
 concurrency:
@@ -20,8 +22,12 @@ permissions:
   contents: write   # para el tag de versión
 
 jobs:
+  pruebas:
+    uses: ./.github/workflows/pruebas.yml
+
   desplegar:
     name: Registrar y desplegar en producción
+    needs: pruebas
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -49,8 +55,10 @@ jobs:
         run: |
           # el bloque [default] de AWS Academy (AWS Details → AWS CLI), tal cual, en ~/.aws/credentials
           mkdir -p ~/.aws && printf '%s\n' "$AWS_CREDENCIALES" > ~/.aws/credentials
-          python -c "import boto3; print('cuenta de AWS: ****' + boto3.client('sts').get_caller_identity()['Account'][-4:])" \
+          cuenta=$(python -c "import boto3; print(boto3.client('sts').get_caller_identity()['Account'])") \
             || { echo "::error::Las credenciales de AWS no sirven o vencieron: pega de nuevo el bloque de AWS Details en el secret AWS_CREDENCIALES y vuelve a correr el workflow (Re-run jobs)."; exit 1; }
+          echo "::add-mask::$cuenta"   # el número de la cuenta (va en el nombre del bucket) no sale en los logs
+          echo "cuenta de AWS: ****${cuenta: -4}"
 
       - name: Registrar en MLflow
         id: registro

@@ -1,4 +1,4 @@
-# Para registrar y desplegar (desde un computador o GitHub Actions), además de requirements.txt.
+# Para registrar, desplegar y correr el E2E (desde un computador o GitHub Actions), además de requirements.txt.
 # sagemaker-mlflow permite usar el ARN de la app de MLflow de SageMaker como dirección de MLflow.
 mlflow==3.10.1
 sagemaker-mlflow==0.5.0

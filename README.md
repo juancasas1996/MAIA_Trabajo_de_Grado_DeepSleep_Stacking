@@ -46,7 +46,8 @@ El codificador de época de la CNN-Transformer es una reimplementación propia d
 │   ├── modelo_b.py                    red CNN-Transformer sobre la señal cruda
 │   ├── meta.py                        meta-modelo que combina A y B
 │   └── prediccion.py                  junta todo: estadio, confianza, 2.ª opción y "revisar"
-├── despliegue/                        endpoint de SageMaker, registro en MLflow y prueba de humo (ver despliegue/README.md)
+├── despliegue/                        endpoint de SageMaker, registro en MLflow, E2E y prueba de humo (ver despliegue/README.md)
+├── tests/                             pruebas del sistema con una noche inventada (pytest tests)
 ├── particiones.json                   partición por sujeto: 16 de test + 5 folds sobre 62
 ├── requirements.txt
 └── data/                              los datos (no se suben al repositorio)
@@ -107,7 +108,7 @@ salida = predecir_noche("data/sleep-cassette/SC4001E0-PSG.edf", canales=("fpz",)
 
 **Verificado contra los notebooks** (noches de test, 4 combinaciones de canales): el modelo A da las mismas probabilidades (diferencia 0). La red se entrenó y predijo en una GPU con media precisión, y en CPU sus probabilidades difieren hasta en 2·10⁻³; el estadio elegido cambia en 1 de cada 10 000 épocas en la red y en 3 de cada 10 000 en el meta-modelo.
 
-**En producción:** el endpoint asíncrono de SageMaker `sistema-sueno` corre `sistema.analizar` con los modelos de `modelo/`. Cada merge a `main` que cambie `modelo/`, `sistema/` o `despliegue/` registra una versión nueva en MLflow y actualiza el endpoint (ver [despliegue/README.md](despliegue/README.md)).
+**En producción:** el endpoint asíncrono de SageMaker `sistema-sueno` corre `sistema.analizar` con los modelos de `modelo/`. Cada PR que cambie `modelo/`, `sistema/`, `despliegue/` o `tests/` corre las pruebas y el E2E, que compara el candidato con producción en las 32 noches de test y deja la tabla en el PR. Cada merge a `main` que cambie lo que va dentro del endpoint (`modelo/`, `sistema/`, `despliegue/inference.py` o `despliegue/requirements.txt`) registra una versión nueva en MLflow y actualiza el endpoint (ver [despliegue/README.md](despliegue/README.md)).
 
 ## Partición
 
