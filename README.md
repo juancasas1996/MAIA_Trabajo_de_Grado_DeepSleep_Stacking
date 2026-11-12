@@ -117,7 +117,7 @@ salida = predecir_noche("data/sleep-cassette/SC4001E0-PSG.edf", canales=("fpz",)
 
 - **Canales:** cualquier combinación con al menos un EEG, entre `fpz`, `pz`, `eog` y `emg`. Por defecto, los que tenga el EDF.
 - **Sin hipnograma** se analiza todo el registro, o el rango que se pida con `epoca_inicio=` y `epoca_fin=` (épocas de 30 s, con los dos extremos incluidos). Con `hipnograma=` se analiza la ventana de sueño, como en el entrenamiento.
-- **Hora de apagado de la luz:** con `hora_apagado="HH:MM:SS"`. Si no se da, se cuenta desde el inicio del registro.
+- **Hora de apagado de la luz:** con `hora_apagado="HH:MM:SS"`. Si no se da, se cuenta desde la primera época analizada.
 
 **Verificado contra los notebooks** (noches de test, 4 combinaciones de canales): el modelo A da las mismas probabilidades (diferencia 0). La red se entrenó y predijo en una GPU con media precisión, y en CPU sus probabilidades difieren hasta en 2·10⁻³; el estadio elegido cambia en 1 de cada 10 000 épocas en la red y en 3 de cada 10 000 en el meta-modelo.
 
@@ -272,7 +272,7 @@ Los dos quedan en `modelo/sistema.json`. Test con el umbral 0.65:
 
 El sistema en producción se entrenó con la semilla 42. Para ver si el resultado fue suerte, se entrenó completo otra vez con las semillas 1, 2, 3 y 4: la red, el XGBoost y el meta-modelo, cada uno con la semilla de su sistema. La partición, los hiperparámetros, el preprocesamiento y las 100 columnas no cambian, y el bootstrap usa siempre la semilla 42, para medir las 5 con las mismas remuestras. Test:
 
-| Métrica | 42 | 1 | 2 | 3 | 4 | Media ± de |
+| Métrica | 42 | 1 | 2 | 3 | 4 | Media ± DE |
 |---|---|---|---|---|---|---|
 | **MF1, canales al azar** | 0.767 | 0.770 | 0.764 | 0.769 | 0.770 | **0.768 ± 0.002** |
 | κ, canales al azar | 0.738 | 0.742 | 0.734 | 0.742 | 0.738 | 0.739 ± 0.003 |
@@ -284,11 +284,11 @@ El sistema en producción se entrenó con la semilla 42. Para ver si el resultad
 | Entrega el sistema | 80.2 % | 81.6 % | 79.2 % | 80.9 % | 81.0 % | 80.6 % ± 0.9 |
 | Acierto en lo que entrega | 0.878 | 0.875 | 0.878 | 0.878 | 0.874 | 0.877 ± 0.002 |
 
-- **Es estable:** la desviación estándar queda bajo 0.005, el límite fijado antes de ver los resultados. El rango con canales al azar (0.006) es mucho menor que el ancho del IC 95 % por tener 16 sujetos de test (0.070).
+- **Es estable:** la desviación estándar (DE) del MF1 queda bajo 0.005, el límite fijado antes de ver los resultados. El rango con canales al azar (0.006) es mucho menor que el ancho del IC 95 % por tener 16 sujetos de test (0.070).
 - **La 42 no fue suerte:** queda 4.ª de 5, a 0.001 de la media. Producción sigue con la 42; no se elige la mejor semilla, porque sería elegir con el test.
-- Por piezas, el XGBoost casi no cambia (de ≤ 0.002 en el test) y la red algo más (≤ 0.003 en el test y hasta 0.007 en la CV), aunque su mejor pasada cambie mucho con la semilla.
+- Por piezas, el MF1 de test del XGBoost casi no cambia (DE de 0.002 o menos en cada combinación) y el de la red algo más (DE de 0.003 o menos en el test y hasta 0.007 en la CV), aunque su mejor pasada cambie mucho con la semilla.
 
-La red de las semillas 1–4 se entrenó en una A100 de Colab, 6 entrenamientos a la vez por semilla. Las redes de los folds y las predicciones de cada semilla quedan en `data/procesados/semillas/`.
+La red de las semillas 1–4 se entrenó en una A100 de Colab, 6 entrenamientos a la vez. Las redes de los folds y las predicciones de cada semilla quedan en `data/procesados/semillas/`.
 
 ### De la CNN-BiLSTM a la CNN-Transformer
 
@@ -313,10 +313,10 @@ MF1 de la CV de las dos redes, con la misma partición, el mismo preprocesamient
 
 - Los tres modelos sirven para las 12 combinaciones, y a los tres les va mejor con más canales. El EOG es el canal que más aporta, y Fpz-Cz funciona mejor que Pz-Oz.
 - **Mirar 80 épocas en lugar de 20 mejora la red:** en la CV, la CNN-Transformer supera a la CNN-BiLSTM en 10 de las 12 combinaciones y empata en las otras 2 (+0.009 en promedio). La ganancia está en las combinaciones sin EOG (+0.012 a +0.016); con EOG es pequeña (0 a +0.007).
-- **A y B se equivocan en épocas distintas:** B comparte entre el 59 % y el 65 % de los errores de A en la CV, bajo la regla del 70 % del proyecto. A es mejor en N2 y N3, y B en N1 y REM.
-- **El meta-modelo es el mejor modelo en las 12 combinaciones.** En la CV gana entre +0.02 y +0.03 de MF1 sobre el mejor de A y B. En el test supera de forma significativa a A en las 12 y a B en 8. Por estadio, mejora a los dos en casi todo; solo en REM con los 4 canales B sigue un poco mejor (0.854 frente a 0.848).
-- **Frente a la votación simple, la ganancia es pequeña:** +0.003 a +0.008 en la CV y −0.001 a +0.007 en el test, sin ninguna diferencia significativa. Casi toda la mejora viene de juntar dos formas distintas de ver la noche, no de lo sofisticado del meta-modelo.
-- **La meta del proyecto con un solo EEG es MF1 ≥ 0.75 y κ ≥ 0.70.** Con solo Fpz-Cz el meta-modelo la cumple (0.773 y 0.750), mientras que A y B por separado no. Con solo Pz-Oz no llega en MF1 (0.737), aunque sí en κ (0.704).
-- **Con canales al azar por noche, el sistema da MF1 0.768** [0.730, 0.799] y κ 0.740: es la cifra que se espera con cualquier paciente, y supera de forma significativa a A y a B.
+- **A y B se equivocan en épocas distintas:** B comparte entre el 56 % y el 62 % de los errores de A en la CV, bajo la regla del 70 % del proyecto. A es mejor en N2 y N3, y B en N1 y REM.
+- **El meta-modelo es el mejor modelo en las 12 combinaciones.** En la CV gana entre +0.018 y +0.033 de MF1 sobre el mejor de A y B. En el test supera de forma significativa a A en las 12 y a B en 7. Por estadio, mejora a los dos en casi todo; solo en REM con los 4 canales B sigue un poco mejor (0.854 frente a 0.847).
+- **Frente a la votación simple, la ganancia es pequeña:** +0.006 a +0.010 en la CV y +0.004 a +0.008 en el test, significativa solo en 1 de las 12 combinaciones. Casi toda la mejora viene de juntar dos formas distintas de ver la noche, no de lo sofisticado del meta-modelo.
+- **La meta del proyecto con un solo EEG es MF1 ≥ 0.75 y κ ≥ 0.70.** Con solo Fpz-Cz el meta-modelo la cumple (0.772 y 0.748), mientras que A y B por separado no. Con solo Pz-Oz no llega en MF1 (0.735), aunque sí en κ (0.703).
+- **Con canales al azar por noche, el sistema da MF1 0.767** [0.728, 0.797] y κ 0.738: es la cifra que se espera con cualquier paciente, y supera de forma significativa a A y a B.
 - **Con el umbral de 0.65, el sistema entrega solo ~80 % de la noche con ~88 % de acierto** y marca el ~20 % restante para revisión. Ahí la correcta está entre las 2 opciones el 86 % de las veces, así que con la revisión el acierto de la noche sube de 0.80 a 0.87.
-- **El aviso por noche sirve:** las noches que lo disparan aciertan bastante menos (0.73 frente a 0.82).
+- **El aviso por noche sirve:** las noches que lo disparan aciertan bastante menos (0.732 frente a 0.815).
