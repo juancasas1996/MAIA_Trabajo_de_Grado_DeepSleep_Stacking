@@ -28,9 +28,15 @@ El codificador de época de la CNN-Transformer es una reimplementación propia d
 │   ├── modelo_b_red/
 │   │   ├── 1_preprocesamiento.ipynb   filtra y normaliza la señal de cada noche
 │   │   └── 2_entrenamiento.ipynb      arquitectura, validación cruzada, modelo final y resultados
-│   └── meta_modelo/
-│       ├── 1_entrenamiento.ipynb      combina A y B: validación cruzada, modelo final y resultados
-│       └── 2_confianza.ipynb          canales al azar por noche, umbral de confianza y aviso por noche
+│   ├── meta_modelo/
+│   │   ├── 1_entrenamiento.ipynb      combina A y B: validación cruzada, modelo final y resultados
+│   │   └── 2_confianza.ipynb          canales al azar por noche, umbral de confianza y aviso por noche
+│   └── semillas/                      el sistema completo con las semillas 1, 2, 3 y 4
+│       ├── 1_entrenamiento_red.ipynb  la CNN-Transformer con cada semilla (GPU)
+│       ├── 2_entrenamiento_xgboost.ipynb  el XGBoost de 100 columnas con cada semilla
+│       ├── 3_meta_modelo.ipynb        el meta-modelo y el umbral de confianza de cada semilla
+│       ├── 4_resumen.ipynb            comparación de las 5 semillas
+│       └── modelos/semilla_S/         las piezas de cada semilla, con las mismas carpetas que modelo/
 ├── modelo/
 │   ├── modelo_a_xgboost/
 │   │   ├── xgb.json                   el XGBoost de 719 rasgos (612 rondas)
@@ -87,6 +93,7 @@ Con Python 3.11, los notebooks de cada modelo se corren en orden. El meta-modelo
 | `modelo_b_red/2_entrenamiento.ipynb` | 5 folds + modelo final, en paralelo en una GPU → `modelo/modelo_b_red/` |
 | `meta_modelo/1_entrenamiento.ipynb` | 5 folds + modelo final con las predicciones de A (100 columnas) y B → `modelo/meta_modelo/` y `modelo/sistema.json`, que anota qué XGBoost usa el sistema |
 | `meta_modelo/2_confianza.ipynb` | umbral de confianza y aviso por noche, elegidos con la CV → `modelo/sistema.json` |
+| `semillas/1_entrenamiento_red.ipynb` … `4_resumen.ipynb` | el sistema completo con las semillas 1–4 → `experimentacion/semillas/modelos/semilla_S/`; no toca `modelo/` |
 
 El XGBoost y el meta-modelo corren en CPU. La CNN-Transformer necesita una GPU NVIDIA; se entrenó en una A100 de Google Colab. En Colab, el repositorio va en Google Drive, en `MyDrive/prueba_MAIA_Trabajo_de_Grado_DeepSleep_Stacking`, con los EDF en su `data/sleep-cassette/`.
 
@@ -260,6 +267,28 @@ Los dos quedan en `modelo/sistema.json`. Test con el umbral 0.65:
 "Con revisión" supone que el técnico elige bien entre las 2 opciones. En el test, 56 de las 384 noches × combinación disparan el aviso, y su acierto medio es 0.732, frente a 0.815 en las demás.
 
 **Calibración (ECE):** 0.004 en la CV y 0.022 en el test, solo con Fpz-Cz. En el test el sistema está algo sobreconfiado: confianza media 0.834 frente a acierto 0.811.
+
+### Semillas de entrenamiento
+
+El sistema en producción se entrenó con la semilla 42. Para ver si el resultado fue suerte, se entrenó completo otra vez con las semillas 1, 2, 3 y 4: la red, el XGBoost y el meta-modelo, cada uno con la semilla de su sistema. La partición, los hiperparámetros, el preprocesamiento y las 100 columnas no cambian, y el bootstrap usa siempre la semilla 42, para medir las 5 con las mismas remuestras. Test:
+
+| Métrica | 42 | 1 | 2 | 3 | 4 | Media ± de |
+|---|---|---|---|---|---|---|
+| **MF1, canales al azar** | 0.767 | 0.770 | 0.764 | 0.769 | 0.770 | **0.768 ± 0.002** |
+| κ, canales al azar | 0.738 | 0.742 | 0.734 | 0.742 | 0.738 | 0.739 ± 0.003 |
+| F1 N1, canales al azar | 0.514 | 0.522 | 0.510 | 0.513 | 0.526 | 0.517 ± 0.007 |
+| MF1, solo Fpz-Cz | 0.772 | 0.775 | 0.767 | 0.773 | 0.773 | 0.772 ± 0.003 |
+| MF1, los 4 canales | 0.783 | 0.786 | 0.781 | 0.785 | 0.787 | 0.784 ± 0.002 |
+| MF1, solo Pz-Oz | 0.735 | 0.737 | 0.734 | 0.736 | 0.738 | 0.736 ± 0.002 |
+| Umbral de confianza | 0.65 | 0.65 | 0.65 | 0.65 | 0.65 | 0.65 |
+| Entrega el sistema | 80.2 % | 81.6 % | 79.2 % | 80.9 % | 81.0 % | 80.6 % ± 0.9 |
+| Acierto en lo que entrega | 0.878 | 0.875 | 0.878 | 0.878 | 0.874 | 0.877 ± 0.002 |
+
+- **Es estable:** la desviación estándar queda bajo 0.005, el límite fijado antes de ver los resultados. El rango con canales al azar (0.006) es mucho menor que el ancho del IC 95 % por tener 16 sujetos de test (0.070).
+- **La 42 no fue suerte:** queda 4.ª de 5, a 0.001 de la media. Producción sigue con la 42; no se elige la mejor semilla, porque sería elegir con el test.
+- Por piezas, el XGBoost casi no cambia (de ≤ 0.002 en el test) y la red algo más (≤ 0.003 en el test y hasta 0.007 en la CV), aunque su mejor pasada cambie mucho con la semilla.
+
+La red de las semillas 1–4 se entrenó en una A100 de Colab, 6 entrenamientos a la vez por semilla. Las redes de los folds y las predicciones de cada semilla quedan en `data/procesados/semillas/`.
 
 ### De la CNN-BiLSTM a la CNN-Transformer
 
