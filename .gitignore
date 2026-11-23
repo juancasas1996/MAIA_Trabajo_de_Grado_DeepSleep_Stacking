@@ -1,5 +1,6 @@
-data/*
-!data/.gitkeep
+Datos/*
+!Datos/.gitkeep
+!Datos/README.md
 __pycache__/
 .ipynb_checkpoints/
 .DS_Store

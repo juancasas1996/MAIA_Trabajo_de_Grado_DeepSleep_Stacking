@@ -1,4 +1,4 @@
-"""El sistema como modelo de MLflow (pyfunc): el código de sistema/ + los archivos de modelo/ en un solo paquete."""
+"""El sistema como modelo de MLflow (pyfunc): el código de sistema/ + los archivos de Modelos/ en un solo paquete."""
 import mlflow.pyfunc
 
 

@@ -1,11 +1,11 @@
 # Despliegue en SageMaker
 
-El sistema se sirve en un **endpoint asíncrono de SageMaker** (`sistema-sueno`, una ml.m5.large sin GPU). Recibe un EDF que está en S3 y deja la respuesta en S3. Se apaga solo tras 5 min sin peticiones y se prende cuando llega una (~8 min). Cada versión desplegada está registrada en **MLflow** (app de MLflow de SageMaker, modelo `sistema-sueno`) con los tres modelos de `modelo/`, el código de `sistema/` y el commit de git del que salió.
+El sistema se sirve en un **endpoint asíncrono de SageMaker** (`sistema-sueno`, una ml.m5.large sin GPU). Recibe un EDF que está en S3 y deja la respuesta en S3. Se apaga solo tras 5 min sin peticiones y se prende cuando llega una (~8 min). Cada versión desplegada está registrada en **MLflow** (app de MLflow de SageMaker, modelo `sistema-sueno`) con los tres modelos de `Modelos/`, el código de `sistema/` y el commit de git del que salió.
 
 ## Flujo con GitHub Actions
 
 ```
-PR a main que cambie modelo/, sistema/, despliegue/ o tests/
+PR a main que cambie Modelos/, sistema/, despliegue/ o tests/
         │
         ▼
 workflow "E2E"          pruebas ─► registra el candidato en MLflow ─► endpoint candidato aparte ─► 32 noches de test
@@ -13,7 +13,7 @@ workflow "E2E"          pruebas ─► registra el candidato en MLflow ─► en
         │
         │  una persona revisa el comentario y hace merge (o no)
         ▼
-merge a main que cambie lo que va dentro del endpoint: modelo/, sistema/, despliegue/inference.py o
+merge a main que cambie lo que va dentro del endpoint: Modelos/, sistema/, despliegue/inference.py o
 despliegue/requirements.txt (si solo cambian el E2E, los scripts o las pruebas, no se despliega nada)
         │
         ▼
@@ -25,6 +25,7 @@ workflow "Despliegue"   pruebas ─► registra en MLflow ─► actualiza siste
 - Si el E2E falla a la mitad, el endpoint candidato se borra igual.
 - Si la actualización del endpoint falla, SageMaker se queda con la versión anterior.
 - Para volver a una versión anterior: revertir el PR y hacer merge del revert, o `python despliegue/desplegar.py produccion <versión>`.
+- **Interruptor:** el E2E y el despliegue automáticos solo corren si la variable del repositorio `E2E_AUTOMATICO` vale `true` (*Settings → Secrets and variables → Actions → Variables*). Si no existe o vale otra cosa, los PR corren solo las pruebas, el merge no despliega nada y los dos workflows se pueden lanzar a mano (*Actions → Run workflow*). Cambiar la variable no lanza nada: rige desde el siguiente PR o merge.
 
 ## Secret del repositorio
 
@@ -32,6 +33,15 @@ Un solo secret, en GitHub, *Settings → Secrets and variables → Actions → N
 
 - **Name:** `AWS_CREDENCIALES`
 - **Secret:** el bloque completo de AWS Academy (*AWS Details → AWS CLI → Show*), tal cual, desde `[default]` hasta el final del `aws_session_token`.
+
+Ejemplo del formato (valores ficticios; los reales son más largos y cambian en cada sesión):
+
+```ini
+[default]
+aws_access_key_id=ASIAIOSFODNN7EXAMPLE
+aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+aws_session_token=IQoJb3JpZ2luX2VjEXAMPLETOKEN...
+```
 
 El workflow lo escribe en `~/.aws/credentials`, igual que en un computador. Las credenciales de AWS Academy vencen a las ~4 h: antes del merge hay que actualizar el secret (*Update secret*) con el bloque nuevo. Si vencieron, el workflow falla en el paso "Credenciales de AWS" sin tocar nada, y basta con actualizarlo y volver a correrlo (*Re-run jobs*).
 
@@ -44,11 +54,12 @@ La cuenta, el bucket (`maia-g3-sueno-<cuenta>`), el rol (`LabRole`) y la app de 
 | `e2e.py` | E2E de un PR: candidato frente a producción en las 32 noches de test, informe para el PR |
 | `inference.py` | lo que corre dentro del endpoint: baja el EDF de S3 y llama a `sistema.analizar` |
 | `modelo_mlflow.py` | el sistema como modelo de MLflow (pyfunc) |
-| `registrar.py` | registra `modelo/` + `sistema/` como una versión nueva en MLflow |
+| `registrar.py` | registra `Modelos/` + `sistema/` como una versión nueva en MLflow |
 | `desplegar.py` | `produccion [versión]`: actualiza el endpoint de producción; `borrar <endpoint>`: borra un endpoint candidato |
 | `humo.py` | prueba de humo después de desplegar: una noche de test con los 4 canales (las noches de test y sus estadios ya están en S3, en `sistema-sueno/test/`) |
 | `cliente.py` | manda peticiones al endpoint asíncrono y recoge las respuestas |
 | `config.py` | nombres de los recursos de AWS |
+| `api/lambda_function.py` | la API pública (función Lambda): recibe las peticiones de la aplicación con su token y llama al endpoint |
 | `requirements.txt` | librerías del contenedor del endpoint |
 | `requirements-aws.txt` | librerías para registrar y desplegar |
 
@@ -65,3 +76,33 @@ python despliegue/e2e.py --nombre prueba          # E2E a mano (crea y borra sis
 ```
 
 **Petición al endpoint** (JSON en S3): `{"s3_uri": "s3://.../SC4001E0-PSG.edf", "canales": ["fpz", "eog"], "hora_apagado": "22:44:00", "epoca_inicio": 800, "epoca_fin": 1700}`. Solo `s3_uri` es obligatorio. La respuesta es la de `sistema.analizar`: por época, el estadio, la confianza, la 2.ª opción, su probabilidad, si hay que revisarla y las 5 probabilidades; para la noche, la fracción a revisar, el aviso y `segundos_proceso`.
+
+## API pública
+
+La aplicación no usa credenciales de AWS: llama a una función Lambda con URL pública (`sistema-sueno-api`, código en [`api/lambda_function.py`](api/lambda_function.py)), que a su vez llama al endpoint, que sigue privado. Cada petición lleva un token propio en el header `Authorization: Bearer <token>`. La Lambda solo guarda el sha256 de cada token (variable `TOKENS`), así que los tokens no están ni en AWS ni en el repositorio; sin token o con uno inválido responde 401.
+
+| Ruta | Cuerpo | Respuesta |
+|---|---|---|
+| `POST /subir` | `{"archivo": "SC4001E0-PSG.edf"}` | `{"subir_a": <URL firmada para subir el EDF con PUT, válida 1 h>, "s3_uri": ...}` |
+| `POST /analizar` | la petición al endpoint (arriba), con el `s3_uri` que dio `/subir` | `{"id": ...}` |
+| `GET /resultado/<id>` | — | `{"estado": "pendiente"}`, `{"estado": "listo", "resultado": {...}}` o `{"estado": "error", "error": ...}` |
+
+Ejemplo (el token es ficticio; el real se entrega aparte):
+
+```bash
+API=https://4j672ncxzcshl6fwr45h7wkuly0ybamg.lambda-url.us-east-1.on.aws
+TOKEN=token-de-ejemplo
+
+# 1. pedir dónde subir el EDF, y subirlo
+curl -s -X POST $API/subir -H "Authorization: Bearer $TOKEN" -d '{"archivo": "SC4001E0-PSG.edf"}'
+# {"subir_a": "https://maia-g3-sueno-....s3.amazonaws.com/...", "s3_uri": "s3://maia-g3-sueno-.../SC4001E0-PSG.edf"}
+curl -X PUT --upload-file SC4001E0-PSG.edf "<subir_a>"
+
+# 2. analizar la noche
+curl -s -X POST $API/analizar -H "Authorization: Bearer $TOKEN" \
+     -d '{"s3_uri": "<s3_uri>", "canales": ["fpz", "eog"]}'
+# {"id": "<id>"}
+
+# 3. consultar hasta que esté listo (si el endpoint estaba apagado, tarda ~8 min en prender)
+curl -s $API/resultado/<id> -H "Authorization: Bearer $TOKEN"
+```

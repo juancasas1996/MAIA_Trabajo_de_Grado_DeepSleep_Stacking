@@ -1,6 +1,6 @@
 """Modelo B: red CNN-Transformer sobre la señal cruda, con canales enmascarados.
 
-La arquitectura y la predicción son las de experimentacion/modelo_b_red/2_entrenamiento.ipynb; el preprocesamiento,
+La arquitectura y la predicción son las de Notebooks/modelo_b_red/2_entrenamiento.ipynb; el preprocesamiento,
 el de 1_preprocesamiento.ipynb.
 """
 import mne
@@ -168,7 +168,7 @@ class CnnTransformer(nn.Module):
 # ---------------------------------------------------------------------------------------------------------------
 
 def cargar(ruta, device="cpu"):
-    """Red de modelo/modelo_b_red/modelo_final.pt, lista para predecir, y sus hiperparámetros."""
+    """Red de Modelos/modelo_b_red/modelo_final.pt, lista para predecir, y sus hiperparámetros."""
     ck = torch.load(ruta, map_location=device, weights_only=False)
     red = CnnTransformer(**ck["ARQUITECTURA"]).to(device)
     red.load_state_dict(ck["model_state_dict"])

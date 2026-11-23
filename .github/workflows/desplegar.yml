@@ -1,4 +1,4 @@
-# Despliegue a producción: al llegar a main un merge que cambie lo que va dentro del endpoint (modelo/, sistema/,
+# Despliegue a producción: al llegar a main un merge que cambie lo que va dentro del endpoint (Modelos/, sistema/,
 # despliegue/inference.py o despliegue/requirements.txt). Lo demás (E2E, scripts, pruebas) no despliega nada.
 # El merge del PR es la aprobación humana: el modelo nunca se despliega sin él.
 #   0. pruebas del sistema (si fallan, no sigue);
@@ -11,7 +11,7 @@ name: Despliegue
 on:
   push:
     branches: [main]
-    paths: ["modelo/**", "sistema/**", "despliegue/inference.py", "despliegue/requirements.txt", "!**/*.md"]
+    paths: ["Modelos/**", "sistema/**", "despliegue/inference.py", "despliegue/requirements.txt", "!**/*.md"]
   workflow_dispatch:
 
 concurrency:
@@ -28,6 +28,8 @@ jobs:
   desplegar:
     name: Registrar y desplegar en producción
     needs: pruebas
+    # Solo con la variable del repositorio E2E_AUTOMATICO en "true" (o lanzado a mano): sin E2E previo no se despliega solo
+    if: vars.E2E_AUTOMATICO == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:

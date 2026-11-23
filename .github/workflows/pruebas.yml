@@ -1,4 +1,4 @@
-# Pruebas del sistema con el modelo de modelo/. Las corren el E2E (en cada PR) y el despliegue (al hacer merge), que no
+# Pruebas del sistema con el modelo de Modelos/. Las corren el E2E (en cada PR) y el despliegue (al hacer merge), que no
 # siguen si fallan. Solas se lanzan a mano: Actions → Pruebas → Run workflow.
 name: Pruebas
 

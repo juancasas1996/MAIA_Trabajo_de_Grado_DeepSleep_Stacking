@@ -2,7 +2,7 @@
 
     python despliegue/e2e.py --nombre pr-7 [--version 9] [--salida e2e]
 
-1. Registra en MLflow lo que hay en modelo/ y sistema/ (o usa --version, si ya está registrado).
+1. Registra en MLflow lo que hay en Modelos/ y sistema/ (o usa --version, si ya está registrado).
 2. Lo despliega en un endpoint aparte (sistema-sueno-<nombre>). Producción no se toca.
 3. Manda las 32 noches de test (las de S3, ver humo.py) al candidato y a producción. A cada noche se le sortea una de
    las 12 combinaciones de canales (semilla 42), la misma para los dos modelos.
@@ -194,7 +194,7 @@ def informe(r):
             L += [f"**{nombre}**", "", _confusion_md(m["confusion"]), ""]
     L += ["</details>", "",
           "⬆️/⬇️: diferencia significativa (el IC no cruza 0). Producción no se toca: este modelo se publica solo si se "
-          "hace merge y el PR cambia lo que va dentro del endpoint (`modelo/`, `sistema/`, `despliegue/inference.py` o "
+          "hace merge y el PR cambia lo que va dentro del endpoint (`Modelos/`, `sistema/`, `despliegue/inference.py` o "
           "`despliegue/requirements.txt`)."]
     return "\n".join(L) + "\n"
 
@@ -202,7 +202,7 @@ def informe(r):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--nombre", required=True, help="identifica el candidato, p. ej. pr-7 (endpoint sistema-sueno-pr-7)")
-    ap.add_argument("--version", type=int, help="versión de MLflow ya registrada (si no, registra modelo/ y sistema/)")
+    ap.add_argument("--version", type=int, help="versión de MLflow ya registrada (si no, registra Modelos/ y sistema/)")
     ap.add_argument("--salida", default="e2e")
     a = ap.parse_args()
     salida = Path(a.salida)
