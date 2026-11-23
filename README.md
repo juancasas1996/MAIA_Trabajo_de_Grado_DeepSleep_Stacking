@@ -380,3 +380,7 @@ MF1 de la CV de las dos redes, con la misma partición, el mismo preprocesamient
 - **Con canales al azar por noche, el sistema da MF1 0.767** [0.728, 0.797] y κ 0.738: es la cifra que se espera con cualquier paciente, y supera de forma significativa a A y a B.
 - **Con el umbral de 0.65, el sistema entrega solo ~80 % de la noche con ~88 % de acierto** y marca el ~20 % restante para revisión. Ahí la correcta está entre las 2 opciones el 86 % de las veces, así que con la revisión el acierto de la noche sube de 0.80 a 0.87.
 - **El aviso por noche sirve:** las noches que lo disparan aciertan bastante menos (0.732 frente a 0.815).
+
+## Interpretación para la revisión asistida
+
+La confianza es la probabilidad que el modelo asigna al estadio elegido; no garantiza que la clasificación sea correcta. Las épocas marcadas como `revisar` y la segunda opción ayudan al especialista a priorizar la revisión. Las épocas con mayor confianza también pueden contener errores, por lo que el hipnograma propuesto debe ser validado por el especialista.
