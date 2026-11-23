@@ -1,10 +1,18 @@
-# Estadificación del sueño con canales variables
+# Clasificación automática de estadios del sueño con canales variables y revisión asistida mediante ensamble de modelos
 
 Clasificación automática de los estadios del sueño (W, N1, N2, N3, REM) en épocas de 30 s a partir de polisomnografía, con **cualquier combinación de canales que incluya al menos un EEG**:
 
 | EEG (al menos uno) | EOG | EMG | Combinaciones |
 |---|---|---|---|
 | Fpz-Cz, Pz-Oz o los dos | con o sin | con o sin | 3 × 2 × 2 = **12** |
+
+## Integrantes
+
+- Diego Charry Cárdenas
+- Isabella del Pilar Camargo Salazar
+- Javier Andrés Marín Gallón
+- Juan Camilo Martínez Vélez
+- Juan Sebastián Casas Castillo
 
 ## Modelos
 
@@ -19,7 +27,7 @@ El codificador de época de la CNN-Transformer es una reimplementación propia d
 ## Contenido
 
 ```
-├── experimentacion/
+├── Notebooks/
 │   ├── modelo_a_xgboost/
 │   │   ├── 1_preprocesamiento.ipynb   lee las noches y calcula los 719 rasgos por época
 │   │   └── 2_entrenamiento.ipynb      validación cruzada, modelo final y resultados, con los 719 rasgos
@@ -36,8 +44,8 @@ El codificador de época de la CNN-Transformer es una reimplementación propia d
 │       ├── 2_entrenamiento_xgboost.ipynb  el XGBoost de 100 columnas con cada semilla
 │       ├── 3_meta_modelo.ipynb        el meta-modelo y el umbral de confianza de cada semilla
 │       ├── 4_resumen.ipynb            comparación de las 5 semillas
-│       └── modelos/semilla_S/         las piezas de cada semilla, con las mismas carpetas que modelo/
-├── modelo/
+│       └── modelos/semilla_S/         las piezas de cada semilla, con las mismas carpetas que Modelos/
+├── Modelos/
 │   ├── modelo_a_xgboost/
 │   │   ├── xgb.json                   el XGBoost de 719 rasgos (612 rondas)
 │   │   └── columnas.json              los 719 rasgos de entrada, en orden
@@ -51,7 +59,7 @@ El codificador de época de la CNN-Transformer es una reimplementación propia d
 │   │   ├── meta_xgb.json              el XGBoost (294 rondas)
 │   │   └── columnas.json              las 54 entradas, en orden
 │   └── sistema.json                   qué archivos forman el sistema, cómo se combinan, umbral de confianza y aviso por noche
-├── sistema/                           código para predecir una noche nueva con los modelos de modelo/
+├── sistema/                           código para predecir una noche nueva con los modelos de Modelos/
 │   ├── lectura.py                     EDF (y, si hay, hipnograma) -> épocas de 30 s
 │   ├── modelo_a.py                    rasgos por época + XGBoost con canales enmascarados
 │   ├── modelo_b.py                    red CNN-Transformer sobre la señal cruda
@@ -61,20 +69,20 @@ El codificador de época de la CNN-Transformer es una reimplementación propia d
 ├── tests/                             pruebas del sistema con una noche inventada (pytest tests)
 ├── particiones.json                   partición por sujeto: 16 de test + 5 folds sobre 62
 ├── requirements.txt
-└── data/                              los datos (no se suben al repositorio)
+└── Datos/                             los datos (no se suben al repositorio); su estructura, en Datos/README.md
 ```
 
 ## Datos
 
-[Sleep-EDF Database Expanded v1.0.0](https://physionet.org/content/sleep-edfx/1.0.0/), subconjunto Sleep Cassette: 153 noches de 78 personas sanas. Se ponen a mano en `data/`:
+[Sleep-EDF Database Expanded v1.0.0](https://physionet.org/content/sleep-edfx/1.0.0/), subconjunto Sleep Cassette: 153 noches de 78 personas sanas. Se ponen a mano en `Datos/`:
 
 ```
-data/
+Datos/
 ├── sleep-cassette/      los 306 EDF (SC4ssNE0-PSG.edf y SC4ssN*-Hypnogram.edf)
 └── SC-subjects.xls
 ```
 
-Lo que calculan los notebooks queda en `data/procesados/<modelo>/`.
+Lo que calculan los notebooks queda en `Datos/procesados/<modelo>/`.
 
 ## Cómo correrlo
 
@@ -86,31 +94,31 @@ Con Python 3.11, los notebooks de cada modelo se corren en orden. El meta-modelo
 
 | Notebook | Qué hace |
 |---|---|
-| `modelo_a_xgboost/1_preprocesamiento.ipynb` | rasgos de las 153 noches → `data/procesados/modelo_a_xgboost/rasgos.parquet` |
-| `modelo_a_xgboost/2_entrenamiento.ipynb` | 5 folds + modelo final con los 719 rasgos → `modelo/modelo_a_xgboost/` |
-| `modelo_a_xgboost_100_features/1_entrenamiento.ipynb` | lo mismo con las 100 columnas más importantes → `modelo/modelo_a_xgboost_100_features/` |
-| `modelo_b_red/1_preprocesamiento.ipynb` | señal filtrada y normalizada → `data/procesados/modelo_b_red/noches/` |
-| `modelo_b_red/2_entrenamiento.ipynb` | 5 folds + modelo final, en paralelo en una GPU → `modelo/modelo_b_red/` |
-| `meta_modelo/1_entrenamiento.ipynb` | 5 folds + modelo final con las predicciones de A (100 columnas) y B → `modelo/meta_modelo/` y `modelo/sistema.json`, que anota qué XGBoost usa el sistema |
-| `meta_modelo/2_confianza.ipynb` | umbral de confianza y aviso por noche, elegidos con la CV → `modelo/sistema.json` |
-| `semillas/1_entrenamiento_red.ipynb` … `4_resumen.ipynb` | el sistema completo con las semillas 1–4 → `experimentacion/semillas/modelos/semilla_S/`; no toca `modelo/` |
+| `modelo_a_xgboost/1_preprocesamiento.ipynb` | rasgos de las 153 noches → `Datos/procesados/modelo_a_xgboost/rasgos.parquet` |
+| `modelo_a_xgboost/2_entrenamiento.ipynb` | 5 folds + modelo final con los 719 rasgos → `Modelos/modelo_a_xgboost/` |
+| `modelo_a_xgboost_100_features/1_entrenamiento.ipynb` | lo mismo con las 100 columnas más importantes → `Modelos/modelo_a_xgboost_100_features/` |
+| `modelo_b_red/1_preprocesamiento.ipynb` | señal filtrada y normalizada → `Datos/procesados/modelo_b_red/noches/` |
+| `modelo_b_red/2_entrenamiento.ipynb` | 5 folds + modelo final, en paralelo en una GPU → `Modelos/modelo_b_red/` |
+| `meta_modelo/1_entrenamiento.ipynb` | 5 folds + modelo final con las predicciones de A (100 columnas) y B → `Modelos/meta_modelo/` y `Modelos/sistema.json`, que anota qué XGBoost usa el sistema |
+| `meta_modelo/2_confianza.ipynb` | umbral de confianza y aviso por noche, elegidos con la CV → `Modelos/sistema.json` |
+| `semillas/1_entrenamiento_red.ipynb` … `4_resumen.ipynb` | el sistema completo con las semillas 1–4 → `Notebooks/semillas/modelos/semilla_S/`; no toca `Modelos/` |
 
-El XGBoost y el meta-modelo corren en CPU. La CNN-Transformer necesita una GPU NVIDIA; se entrenó en una A100 de Google Colab. En Colab, el repositorio va en Google Drive, en `MyDrive/prueba_MAIA_Trabajo_de_Grado_DeepSleep_Stacking`, con los EDF en su `data/sleep-cassette/`.
+El XGBoost y el meta-modelo corren en CPU. La CNN-Transformer necesita una GPU NVIDIA; se entrenó en una A100 de Google Colab. En Colab, el repositorio va en Google Drive, en `MyDrive/prueba_MAIA_Trabajo_de_Grado_DeepSleep_Stacking`, con los EDF en su `Datos/sleep-cassette/`.
 
 **Reproducibilidad (semilla 42):**
-- XGBoost: es determinista. El de 719 rasgos da 592, 656, 660, 508 y 644 rondas en los folds y 612 en el modelo final; el de 100 columnas, 703, 753, 477, 374 y 407, y 542. Los dos reproducen byte a byte sus archivos de `modelo/`.
+- XGBoost: es determinista. El de 719 rasgos da 592, 656, 660, 508 y 644 rondas en los folds y 612 en el modelo final; el de 100 columnas, 703, 753, 477, 374 y 407, y 542. Los dos reproducen byte a byte sus archivos de `Modelos/`.
 - CNN-Transformer: en una A100, las mejores pasadas son 96, 74, 89, 75 y 35 en los folds y 88 en el modelo final. En otra GPU los decimales pueden cambiar un poco.
 - Meta-modelo: su XGBoost da 465, 229, 206, 260 y 145 rondas en los folds y 294 en el modelo final. Como depende de las predicciones de la red, una diferencia de 10⁻⁷ en la GPU puede mover algunas rondas, pero las métricas cambian menos de 0.001.
 
 ## Predecir una noche
 
-`sistema/` predice una noche nueva con los modelos ya entrenados de `modelo/`, sin volver a entrenar. Las funciones son las mismas de los notebooks:
+`sistema/` predice una noche nueva con los modelos ya entrenados de `Modelos/`, sin volver a entrenar. Las funciones son las mismas de los notebooks:
 
 ```python
 from sistema import cargar_sistema, predecir_noche
 
 sistema = cargar_sistema()   # carga las tres piezas una vez
-salida = predecir_noche("data/sleep-cassette/SC4001E0-PSG.edf", canales=("fpz",), sistema=sistema)
+salida = predecir_noche("Datos/sleep-cassette/SC4001E0-PSG.edf", canales=("fpz",), sistema=sistema)
 ```
 
 `salida` tiene una fila por época de 30 s con el estadio, la confianza, la 2.ª opción, si hay que revisarla y las probabilidades de los 5 estadios. En `salida.attrs` quedan la fracción de la noche a revisar y si se dispara el aviso por noche.
@@ -121,7 +129,59 @@ salida = predecir_noche("data/sleep-cassette/SC4001E0-PSG.edf", canales=("fpz",)
 
 **Verificado contra los notebooks** (noches de test, 4 combinaciones de canales): el modelo A da las mismas probabilidades (diferencia 0). La red se entrenó y predijo en una GPU con media precisión, y en CPU sus probabilidades difieren hasta en 2·10⁻³; el estadio elegido cambia en 1 de cada 10 000 épocas en la red y en 3 de cada 10 000 en el meta-modelo.
 
-**En producción:** el endpoint asíncrono de SageMaker `sistema-sueno` corre `sistema.analizar` con los modelos de `modelo/`. Cada PR que cambie `modelo/`, `sistema/`, `despliegue/` o `tests/` corre las pruebas y el E2E, que compara el candidato con producción en las 32 noches de test y deja la tabla en el PR. Cada merge a `main` que cambie lo que va dentro del endpoint (`modelo/`, `sistema/`, `despliegue/inference.py` o `despliegue/requirements.txt`) registra una versión nueva en MLflow y actualiza el endpoint (ver [despliegue/README.md](despliegue/README.md)).
+**En producción:** el endpoint asíncrono de SageMaker `sistema-sueno` corre `sistema.analizar` con los modelos de `Modelos/`. Cada PR que cambie `Modelos/`, `sistema/`, `despliegue/` o `tests/` corre las pruebas y el E2E, que compara el candidato con producción en las 32 noches de test y deja la tabla en el PR. Cada merge a `main` que cambie lo que va dentro del endpoint (`Modelos/`, `sistema/`, `despliegue/inference.py` o `despliegue/requirements.txt`) registra una versión nueva en MLflow y actualiza el endpoint (ver [despliegue/README.md](despliegue/README.md)). El E2E y el despliegue automáticos dependen de la variable `E2E_AUTOMATICO` (ver [Configuración](#configuración)).
+
+## Configuración
+
+Lo que se puede ajustar no está fijo en el código: está en `Modelos/sistema.json` o en variables de entorno.
+
+### Sistema: `Modelos/sistema.json`
+
+`cargar_sistema()` lo lee cada vez que carga los modelos, así que basta con editarlo; no hay que tocar el código ni reentrenar.
+
+| Campo | Valor actual | Para qué sirve |
+|---|---|---|
+| `umbral_confianza` | `0.65` | las épocas con confianza menor se marcan para revisar, con la 1.ª y la 2.ª opción |
+| `aviso_noche_fraccion_revisar` | `0.2774` | si la fracción de la noche marcada para revisar lo supera, se sugiere revisar la noche completa |
+| `carpeta_modelo_a` | `modelo_a_xgboost_100_features` | qué XGBoost usa el sistema; la otra opción es `modelo_a_xgboost` (719 rasgos). El meta-modelo se entrena con las predicciones de uno de los dos, así que al cambiarlo hay que volver a correr `meta_modelo/1_entrenamiento.ipynb` |
+
+Los demás campos (`estadios`, `modalidades`, `contexto_meta`, los archivos de cada pieza y el relleno de bordes) describen cómo se entrenó el sistema y no se cambian sin reentrenar. En producción, un cambio en `sistema.json` sigue el flujo de siempre: el PR corre las pruebas y el E2E, y el merge lo despliega.
+
+### Cada predicción
+
+`canales`, `hora_apagado`, `epoca_inicio`, `epoca_fin` e `hipnograma`, en `predecir_noche` y en la petición al endpoint (ver [Predecir una noche](#predecir-una-noche)).
+
+### Despliegue: variables de entorno
+
+Las lee [`despliegue/config.py`](despliegue/config.py); ninguna es obligatoria.
+
+| Variable | Por defecto | Para qué sirve |
+|---|---|---|
+| `AWS_REGION` | `us-east-1` | región de AWS |
+| `BUCKET` | `maia-g3-sueno-<cuenta>` | bucket de S3 con las peticiones, las respuestas y las noches de test |
+| `ROL_SAGEMAKER` | el `LabRole` de la cuenta | rol con el que SageMaker corre el endpoint |
+| `MLFLOW_ARN` | la app de MLflow `maia-g3-mlflow` | registro de las versiones del sistema |
+| `COMMIT_SHA` | el que pone GitHub Actions | commit que se anota en cada versión de MLflow |
+
+Las credenciales de AWS van en `~/.aws/credentials` o, en GitHub Actions, en el secret `AWS_CREDENCIALES` (ver [despliegue/README.md](despliegue/README.md#secret-del-repositorio)). El tipo de instancia (`INSTANCIA`, ml.m5.large) y los minutos sin peticiones antes de apagarse (`MINUTOS_SIN_USO`, 5) son constantes de `despliegue/config.py`.
+
+En GitHub (*Settings → Secrets and variables → Actions*):
+
+| Nombre | Tipo | Para qué sirve |
+|---|---|---|
+| `AWS_CREDENCIALES` | secret | credenciales de AWS Academy para el E2E y el despliegue |
+| `E2E_AUTOMATICO` | variable | con `true`, cada PR corre el E2E y cada merge despliega; si no existe o vale otra cosa, los PR solo corren las pruebas y el E2E y el despliegue se lanzan a mano |
+
+### API pública: variables de la Lambda
+
+Se cambian en la consola de AWS (*Lambda → sistema-sueno-api → Configuración → Variables de entorno*).
+
+| Variable | Valor actual | Para qué sirve |
+|---|---|---|
+| `BUCKET` | `maia-g3-sueno-<cuenta>` | bucket donde se suben los EDF y quedan las respuestas |
+| `ENDPOINT` | `sistema-sueno` | carpeta de S3 de la API y prefijo que acepta `/analizar` |
+| `MODELO` | `sistema-sueno-rapido` | endpoint que atiende las peticiones (la ml.c5.xlarge); si falta, se usa `ENDPOINT` |
+| `TOKENS` | JSON `{"nombre": "<sha256 del token>"}` | tokens aceptados en `Authorization: Bearer`; solo se guarda su sha256 |
 
 ## Partición
 
@@ -254,7 +314,7 @@ La confianza de una época es la probabilidad de la clase elegida. Si es menor q
 - **umbral:** el menor de 0.50, 0.55, …, 0.95 con el que lo que entrega el sistema acierta al menos el 90 % en la CV. Resultado: **0.65** (en la CV entrega el 82.3 % de la noche con acierto 0.909);
 - **aviso por noche:** si la fracción a revisar supera el percentil 90 de las noches de la CV, se sugiere revisar la noche completa. Resultado: **27.7 %**.
 
-Los dos quedan en `modelo/sistema.json`. Test con el umbral 0.65:
+Los dos quedan en `Modelos/sistema.json`. Test con el umbral 0.65:
 
 | Canales | Entrega el sistema [IC 95 %] | Acierto en lo que entrega [IC 95 %] | Correcta entre 2 opciones en "revisar" | Acierto sin → con revisión |
 |---|---|---|---|---|
@@ -288,7 +348,7 @@ El sistema en producción se entrenó con la semilla 42. Para ver si el resultad
 - **La 42 no fue suerte:** queda 4.ª de 5, a 0.001 de la media. Producción sigue con la 42; no se elige la mejor semilla, porque sería elegir con el test.
 - Por piezas, el MF1 de test del XGBoost casi no cambia (DE de 0.002 o menos en cada combinación) y el de la red algo más (DE de 0.003 o menos en el test y hasta 0.007 en la CV), aunque su mejor pasada cambie mucho con la semilla.
 
-La red de las semillas 1–4 se entrenó en una A100 de Colab, 6 entrenamientos a la vez. Las redes de los folds y las predicciones de cada semilla quedan en `data/procesados/semillas/`.
+La red de las semillas 1–4 se entrenó en una A100 de Colab, 6 entrenamientos a la vez. Las redes de los folds y las predicciones de cada semilla quedan en `Datos/procesados/semillas/`.
 
 ### De la CNN-BiLSTM a la CNN-Transformer
 

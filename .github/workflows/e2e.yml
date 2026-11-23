@@ -1,4 +1,5 @@
-# E2E de un modelo candidato: en cada PR a main que cambie modelo/, sistema/, despliegue/ o tests/.
+# E2E de un modelo candidato: en cada PR a main que cambie Modelos/, sistema/, despliegue/ (salvo la API, despliegue/api/)
+# o tests/.
 #   1. pruebas del sistema (si fallan, no sigue);
 #   2. despliega el candidato en un endpoint aparte de SageMaker (producción no se toca);
 #   3. manda las 32 noches de test al candidato y a producción y compara MF1, κ, F1 por estadio, matriz de confusión
@@ -10,7 +11,7 @@ name: E2E
 on:
   pull_request:
     branches: [main]
-    paths: ["modelo/**", "sistema/**", "despliegue/**", "tests/**", "!**/*.md"]
+    paths: ["Modelos/**", "sistema/**", "despliegue/**", "tests/**", "!**/*.md", "!despliegue/api/**"]
   workflow_dispatch:
 
 concurrency:
@@ -28,6 +29,8 @@ jobs:
   e2e:
     name: Candidato en SageMaker frente a producción
     needs: pruebas
+    # Solo con la variable del repositorio E2E_AUTOMATICO en "true" (o lanzado a mano); si no, el PR corre solo las pruebas
+    if: vars.E2E_AUTOMATICO == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     env:

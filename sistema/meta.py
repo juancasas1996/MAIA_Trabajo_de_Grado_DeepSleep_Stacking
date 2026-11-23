@@ -1,4 +1,4 @@
-"""Meta-modelo: combina A y B con las épocas vecinas (experimentacion/meta_modelo/1_entrenamiento.ipynb).
+"""Meta-modelo: combina A y B con las épocas vecinas (Notebooks/meta_modelo/1_entrenamiento.ipynb).
 
 54 entradas por época: log-probabilidades de A y B en t-2..t+2 (2 × 5 × 5 = 50) y la máscara de canales (4).
 Adentro, regresión logística + XGBoost pequeño, promediados.
@@ -54,7 +54,7 @@ def entradas(pa, pb, mask):
 
 
 def cargar(directorio):
-    """Regresión logística, XGBoost y las 54 columnas de entrada de modelo/meta_modelo."""
+    """Regresión logística, XGBoost y las 54 columnas de entrada de Modelos/meta_modelo."""
     d = Path(directorio)
     lr = joblib.load(d / "meta_lr.joblib")
     m = xgb.XGBClassifier()

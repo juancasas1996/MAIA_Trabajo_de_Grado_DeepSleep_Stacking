@@ -1,4 +1,4 @@
-"""Pruebas del sistema con los modelos de modelo/ (en un PR, los del candidato). No necesitan datos: usan una noche
+"""Pruebas del sistema con los modelos de Modelos/ (en un PR, los del candidato). No necesitan datos: usan una noche
 inventada. Corren antes del E2E: si alguna falla, no se despliega nada.
 """
 import json

@@ -1,6 +1,6 @@
 """Modelo A: rasgos por época + XGBoost con canales enmascarados.
 
-Los rasgos son los de experimentacion/modelo_a_xgboost/1_preprocesamiento.ipynb, calculados para una sola noche.
+Los rasgos son los de Notebooks/modelo_a_xgboost/1_preprocesamiento.ipynb, calculados para una sola noche.
 Solo se calculan los de los canales presentes; los demás quedan en NaN, como en el entrenamiento. Al predecir, se
 calculan solo los que usa el modelo (las columnas de columnas.json).
 """
@@ -236,7 +236,7 @@ def channel_index(cols):
 
 
 def cargar(directorio):
-    """XGBoost de una carpeta de modelo/ (xgb.json) y sus columnas de entrada (columnas.json), en orden."""
+    """XGBoost de una carpeta de Modelos/ (xgb.json) y sus columnas de entrada (columnas.json), en orden."""
     d = Path(directorio)
     booster = xgb.Booster()
     booster.load_model(d / "xgb.json")

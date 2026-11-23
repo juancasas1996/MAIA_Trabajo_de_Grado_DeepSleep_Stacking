@@ -1,6 +1,6 @@
 """Sistema de estadificación del sueño para predecir una noche nueva.
 
-Usa los modelos ya entrenados de modelo/ (los notebooks de experimentacion/ los entrenan):
+Usa los modelos ya entrenados de Modelos/ (los notebooks de Notebooks/ los entrenan):
 
     from sistema import predecir_noche
 

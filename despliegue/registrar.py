@@ -1,5 +1,5 @@
 """Registra el sistema en MLflow como una versión nueva de "sistema-sueno": el código de sistema/, los archivos de
-modelo/ y las librerías, en un solo paquete.
+Modelos/ y las librerías, en un solo paquete.
 
     python despliegue/registrar.py [--etiqueta clave=valor ...]
 
@@ -31,7 +31,7 @@ def commit():
         return "desconocido"
 
 
-def describir_modelos(modelo=RAIZ / "modelo"):
+def describir_modelos(modelo=RAIZ / "Modelos"):
     sistema = json.loads((modelo / "sistema.json").read_text())
     cols_a = json.loads((modelo / sistema.get("carpeta_modelo_a", "modelo_a_xgboost") / "columnas.json").read_text())
     cols_meta = json.loads((modelo / "meta_modelo" / "columnas.json").read_text())
@@ -41,7 +41,7 @@ def describir_modelos(modelo=RAIZ / "modelo"):
 
 
 def registrar(etiquetas=None):
-    """Registra modelo/ + sistema/ y devuelve el número de versión."""
+    """Registra Modelos/ + sistema/ y devuelve el número de versión."""
     mlflow.set_tracking_uri(C.mlflow_arn())
     mlflow.set_experiment(C.MODELO)
     requisitos = [r for r in (AQUI / "requirements.txt").read_text().splitlines() if r and not r.startswith("#")]
@@ -52,7 +52,7 @@ def registrar(etiquetas=None):
         info = mlflow.pyfunc.log_model(
             name="sistema",
             python_model=SistemaSueno(),
-            artifacts={"modelo": str(RAIZ / "modelo")},
+            artifacts={"modelo": str(RAIZ / "Modelos")},
             code_paths=[str(RAIZ / "sistema"), str(AQUI / "inference.py"), str(AQUI / "modelo_mlflow.py"),
                         str(AQUI / "requirements.txt")],
             pip_requirements=requisitos + ["torch==2.5.1"],
