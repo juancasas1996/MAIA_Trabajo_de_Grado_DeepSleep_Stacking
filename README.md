@@ -69,6 +69,7 @@ El codificador de época de la CNN-Transformer es una reimplementación propia d
 ├── tests/                             pruebas del sistema con una noche inventada (pytest tests)
 ├── particiones.json                   partición por sujeto: 16 de test + 5 folds sobre 62
 ├── requirements.txt
+├── docs/SomnoAI_guia_de_uso.pdf       guía de uso de la aplicación (ver Uso de la aplicación)
 └── Datos/                             los datos (no se suben al repositorio); su estructura, en Datos/README.md
 ```
 
@@ -384,6 +385,86 @@ MF1 de la CV de las dos redes, con la misma partición, el mismo preprocesamient
 ## Interpretación para la revisión asistida
 
 La confianza es la probabilidad que el modelo asigna al estadio elegido; no garantiza que la clasificación sea correcta. Las épocas marcadas como `revisar` y la segunda opción ayudan al especialista a priorizar la revisión. Las épocas con mayor confianza también pueden contener errores, por lo que el hipnograma propuesto debe ser validado por el especialista.
+
+## Uso de la aplicación
+
+El sistema se usa desde **SomnoAI**, la aplicación web del proyecto: se elige una noche, el sistema la analiza y el especialista revisa las épocas marcadas.
+
+| Recurso | Enlace |
+|---|---|
+| Aplicación | https://54-173-190-105.sslip.io/ |
+| API de la aplicación (Swagger) | https://54-173-190-105.sslip.io/docs |
+| Guía de uso | [docs/SomnoAI_guia_de_uso.pdf](docs/SomnoAI_guia_de_uso.pdf) · [en línea](https://54-173-190-105.sslip.io/guia.html) |
+| Video de demostración | https://www.loom.com/share/c7f641d4c8d745089fd16733e627dbf3 |
+| Repositorio de la aplicación | https://github.com/didacuscha/Somno_AI_clasificacion_del_sueno |
+
+La guía de uso explica cada pantalla: analizar una noche, leer los resultados, revisar época a época y exportar. No hay registro de cuentas: el usuario y la contraseña los entrega el equipo.
+
+### Ejemplo desde Swagger
+
+En `/docs`, cada endpoint se corre con *Try it out* y *Execute*. El ejemplo analiza la noche SC4001 (un sujeto de test) con Fpz-Cz + EOG. Las respuestas son reales y están recortadas.
+
+**1. Iniciar sesión:** `POST /api/v1/auth/login`
+
+```json
+{"username": "<usuario>", "password": "<contraseña>"}
+```
+
+Respuesta:
+
+```json
+{"token": "<token>", "user": {"…": "…"}}
+```
+
+En los demás endpoints, el campo `authorization` lleva `Bearer <token>`.
+
+**2. Analizar la noche:** `POST /api/v1/analyses`
+
+```json
+{"source": {"type": "catalog", "id": "SC4001E0-PSG.edf"}, "channels": ["fpz", "eog"]}
+```
+
+Respuesta `202`: el análisis queda en cola y corre en segundo plano.
+
+```json
+{"id": "4b10e3a0fca4", "night_label": "SC4001E0", "combination_name": "Fpz-Cz + EOG",
+ "window_mode": "reference", "n_epochs": 841, "dataset_split": "test", "status": "queued"}
+```
+
+**3. Consultar el resultado:** `GET /api/v1/records/{id}`, con el `id` anterior, hasta que `status` sea `done`. Si el endpoint del modelo estaba apagado, tarda unos 8 minutos en encender.
+
+```json
+{
+  "status": "done",
+  "progress": {"steps": [
+    {"label": "Cargar señales", "message": "2 canales del modelo · 7,0 h de ventana"},
+    {"label": "Preprocesar",    "message": "841 épocas de 30 s"},
+    {"label": "Predecir",       "seconds": 10.8},
+    {"label": "Marcar épocas",  "message": "123 de 841 épocas marcadas (14,6 %)"},
+    {"label": "Guardar",        "message": "Lista para revisar"}]},
+  "review": {"status": "to_review", "flagged": 123, "flagged_fraction": 0.1463,
+             "whole_night_recommended": false},
+  "model": {"name": "Modelo del proyecto (stacking)", "threshold": 0.65},
+  "epochs": {
+    "stage":      [0, 0, 0, "…"],
+    "confidence": [0.996, 0.999, 1.0, "…"],
+    "second":     [2, 1, 1, "…"],
+    "review":     [0, 0, 0, "…"],
+    "probs":      [[0.996, 0.001, 0.002, 0.0, 0.001], "…"],
+    "reference":  [0, 0, 0, "…"]},
+  "metrics": {"predicted": {"tst_min": 334.0, "efficiency_pct": 84.3, "sol_min": 5.0,
+                            "rem_latency_min": 89.5, "waso_min": 34.0, "awakenings": 7}},
+  "agreement": {"predicted": {"accuracy": 0.904, "mf1": 0.873, "kappa": 0.875}}
+}
+```
+
+Cómo se lee:
+- Estadios: 0 = W, 1 = N1, 2 = N2, 3 = N3, 4 = REM. Los arreglos de `epochs` van alineados, con una posición por época: estadio, confianza, 2.ª opción, si se marcó para revisar, las 5 probabilidades y el estadio del experto.
+- El sistema marcó 123 de las 841 épocas (14.6 %), las de confianza menor que 0.65. Como no supera el aviso por noche, la noche queda `to_review` (por revisar) y no se sugiere revisarla completa.
+- Una época marcada, la posición 65 (la época 66 en la pantalla): probabilidades `[0.006, 0.512, 0.479, 0.001, 0.002]`. El sistema propone N1 con confianza 0.512 y deja N2 como 2.ª opción; el experto la anotó como N2. En la revisión, el especialista la corrige con un clic.
+- `metrics` es la arquitectura del sueño (sueño total, eficiencia, latencias, vigilia después de dormirse y despertares) y `agreement`, el acuerdo con el hipnograma del experto en esta noche.
+
+La referencia completa de la API está en [docs/API_CONTRACT.md](https://github.com/didacuscha/Somno_AI_clasificacion_del_sueno/blob/main/docs/API_CONTRACT.md), en el repositorio de la aplicación.
 
 ## Referencias
 
