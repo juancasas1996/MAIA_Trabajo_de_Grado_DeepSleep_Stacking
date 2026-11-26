@@ -22,7 +22,7 @@ Clasificación automática de los estadios del sueño (W, N1, N2, N3, REM) en é
 | **B: CNN-Transformer** | la señal cruda, 80 épocas seguidas | una CNN + Transformer resume cada época y canal en un vector, se promedian los canales presentes y un segundo Transformer relaciona las 80 épocas del trozo; en el entrenamiento se sortea la combinación de canales de cada trozo |
 | **Meta-modelo** | las probabilidades de A y B en la época y en sus 2 vecinas de cada lado, y los canales presentes (54 entradas) | regresión logística + XGBoost pequeño, promediados; uno solo para las 12 combinaciones |
 
-El codificador de época de la CNN-Transformer es una reimplementación propia de SleepEffFormer (Paul et al., 2026). La CNN-Transformer reemplaza a la CNN-BiLSTM de la versión anterior, que miraba 20 épocas con una BiLSTM.
+El codificador de época de la CNN-Transformer es una reimplementación propia de SleepEffFormer ([Paul et al., 2026](#referencias)). La CNN-Transformer reemplaza a la CNN-BiLSTM de la versión anterior, que miraba 20 épocas con una BiLSTM.
 
 ## Contenido
 
@@ -465,3 +465,9 @@ Cómo se lee:
 - `metrics` es la arquitectura del sueño (sueño total, eficiencia, latencias, vigilia después de dormirse y despertares) y `agreement`, el acuerdo con el hipnograma del experto en esta noche.
 
 La referencia completa de la API está en [docs/API_CONTRACT.md](https://github.com/didacuscha/Somno_AI_clasificacion_del_sueno/blob/main/docs/API_CONTRACT.md), en el repositorio de la aplicación.
+
+## Referencias
+
+- **SleepEffFormer.** Paul et al. (2026). *SleepEffFormer: Efficient CNN-Transformer with Transition-Aware Smoothing for Single-Channel EEG Sleep Stage Classification*. arXiv:2609.22148. https://arxiv.org/abs/2609.22148 — código original: https://github.com/Nishi-Kanta-Paul/SleepStage
+- **Sleep-EDF.** Kemp, B., Zwinderman, A. H., Tuk, B., Kamphuisen, H. A. C. y Oberyé, J. J. L. (2000). Analysis of a sleep-dependent neuronal feedback loop: the slow-wave microcontinuity of the EEG. *IEEE Transactions on Biomedical Engineering, 47*(9), 1185–1194.
+- **PhysioNet.** Goldberger, A. L., Amaral, L. A. N., Glass, L., Hausdorff, J. M., Ivanov, P. C., Mark, R. G., et al. (2000). PhysioBank, PhysioToolkit, and PhysioNet: Components of a new research resource for complex physiologic signals. *Circulation, 101*(23), e215–e220.
